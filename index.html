@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MK: Legacy Arena</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800;900&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="gameCanvas" width="1080" height="640"></canvas>
+
+    <!-- TOP HUD (In-game) -->
+    <div id="hud" class="screen-overlay hidden">
+      <div class="hud-top-left">
+        <div class="player-card">
+          <div class="hero-avatar" id="hud-hero-avatar">🗡️</div>
+          <div class="player-bars">
+            <div class="hero-name-row">
+              <span id="hud-hero-name">Sir Valen</span>
+              <span class="badge" id="hud-hero-level">Lv. 1</span>
+            </div>
+            <div class="bar-container hp-bar">
+              <div class="bar-fill" id="hud-hp-fill" style="width: 100%;"></div>
+              <span class="bar-text" id="hud-hp-text">100 / 100</span>
+            </div>
+            <div class="bar-container sp-bar">
+              <div class="bar-fill" id="hud-sp-fill" style="width: 100%;"></div>
+              <span class="bar-text" id="hud-sp-text">50 / 50</span>
+            </div>
+          </div>
+        </div>
+        <!-- Companion party cards -->
+        <div id="companion-party-container"></div>
+      </div>
+
+      <div class="hud-top-center">
+        <div class="stage-info-pill">
+          <span id="hud-stage-name">Stage 1: Courtyard</span>
+          <span class="separator">|</span>
+          <span id="hud-wave-info">Wave 1 / 3</span>
+        </div>
+        <div id="boss-health-container" class="hidden">
+          <div class="boss-title-row">
+            <span class="boss-badge">BOSS</span>
+            <span id="boss-name">Warlord Grimgor</span>
+          </div>
+          <div class="bar-container boss-hp-bar">
+            <div class="bar-fill" id="boss-hp-fill" style="width: 100%;"></div>
+            <span class="bar-text" id="boss-hp-text">1000 / 1000</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-top-right">
+        <div class="currency-pill">
+          <span class="currency-item">🪙 <span id="hud-gold">0</span></span>
+          <span class="currency-item">💎 <span id="hud-gems">0</span></span>
+        </div>
+        <div class="quick-actions">
+          <button id="btn-sound-toggle" class="btn-icon" title="Toggle Audio">🔊</button>
+          <button id="btn-pause" class="btn-icon" title="Pause Game">⏸️</button>
+        </div>
+      </div>
+
+      <!-- COMBO COUNTER -->
+      <div id="combo-display" class="hidden">
+        <div class="combo-number" id="combo-count">0</div>
+        <div class="combo-label">COMBO!</div>
+      </div>
+
+      <!-- IN-GAME ABILITY BAR -->
+      <div class="hud-bottom-right">
+        <div class="ability-slot" id="slot-attack" data-key="SPACE / J">
+          <div class="ability-icon">⚔️</div>
+          <div class="cooldown-overlay" id="cd-attack"></div>
+          <span class="keybind-hint">Space / J</span>
+        </div>
+        <div class="ability-slot" id="slot-dash" data-key="SHIFT">
+          <div class="ability-icon">💨</div>
+          <div class="cooldown-overlay" id="cd-dash"></div>
+          <span class="keybind-hint">Shift</span>
+        </div>
+        <div class="ability-slot" id="slot-skill1" data-key="K / Q">
+          <div class="ability-icon" id="icon-skill1">💥</div>
+          <div class="cooldown-overlay" id="cd-skill1"></div>
+          <span class="keybind-hint">K / Q</span>
+        </div>
+        <div class="ability-slot" id="slot-skill2" data-key="L / E">
+          <div class="ability-icon" id="icon-skill2">🌪️</div>
+          <div class="cooldown-overlay" id="cd-skill2"></div>
+          <span class="keybind-hint">L / E</span>
+        </div>
+        <div class="ability-slot ult-slot" id="slot-ultimate" data-key="U / R">
+          <div class="ability-icon" id="icon-ult">⚡</div>
+          <div class="cooldown-overlay" id="cd-ult"></div>
+          <span class="keybind-hint">U / R</span>
+        </div>
+      </div>
+
+      <!-- MOBILE TOUCH CONTROLS -->
+      <div id="touch-controls">
+        <div id="touch-joystick-zone">
+          <div id="touch-joystick-base">
+            <div id="touch-joystick-knob"></div>
+          </div>
+        </div>
+        <div id="touch-buttons-zone">
+          <button class="touch-btn touch-btn-attack" id="touch-btn-atk">⚔️</button>
+          <button class="touch-btn touch-btn-dash" id="touch-btn-dash">💨</button>
+          <button class="touch-btn touch-btn-skill" id="touch-btn-s1">💥</button>
+          <button class="touch-btn touch-btn-skill" id="touch-btn-s2">🌪️</button>
+          <button class="touch-btn touch-btn-ult" id="touch-btn-ult">⚡</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN MENU OVERLAY -->
+    <div id="main-menu" class="modal-backdrop">
+      <div class="menu-box">
+        <div class="game-logo">
+          <div class="logo-sub">LEGACY ARENA BRAWLER</div>
+          <h1 class="logo-title">MK</h1>
+          <div class="logo-desc">Champions of the Fallen Realm</div>
+        </div>
+        <div class="menu-btn-group">
+          <button class="menu-btn primary-glow" id="btn-start-campaign">⚔️ BATTLE CAMPAIGN</button>
+          <button class="menu-btn" id="btn-open-party">👥 PARTY & HEROES</button>
+          <button class="menu-btn" id="btn-open-shop">🛡️ ARMORY & UPGRADES</button>
+          <button class="menu-btn" id="btn-open-settings">⚙️ SETTINGS & CONTROLS</button>
+        </div>
+        <div class="footer-credits">
+          Inspired by Mighty Knight & Mighty Knight Legacy | Built for GitHub Pages
+        </div>
+      </div>
+    </div>
+
+    <!-- LEVEL SELECTION OVERLAY -->
+    <div id="level-select-menu" class="modal-backdrop hidden">
+      <div class="panel-box large-panel">
+        <div class="panel-header">
+          <h2>CAMPAIGN MAP</h2>
+          <button class="btn-close" id="btn-close-levels">✖</button>
+        </div>
+        <div class="stage-grid" id="stage-grid">
+          <!-- Dynamically populated stages -->
+        </div>
+        <div class="panel-footer">
+          <button class="menu-btn" id="btn-back-from-levels">◀ BACK TO MENU</button>
+          <button class="menu-btn primary-glow" id="btn-launch-stage" disabled>DEPLOY PARTY ⚔️</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PARTY & HERO SELECT OVERLAY -->
+    <div id="party-select-menu" class="modal-backdrop hidden">
+      <div class="panel-box large-panel">
+        <div class="panel-header">
+          <h2>HERO ROSTER & ALLIES</h2>
+          <button class="btn-close" id="btn-close-party">✖</button>
+        </div>
+        <div class="party-content">
+          <div class="hero-selector-columns">
+            <div class="hero-list" id="hero-list">
+              <!-- Dynamically populated hero cards -->
+            </div>
+            <div class="hero-detail-view" id="hero-detail-view">
+              <div class="detail-portrait" id="detail-portrait">🗡️</div>
+              <h3 id="detail-name">Sir Valen</h3>
+              <div class="detail-class" id="detail-class">Paladin (Tank & Melee Brawler)</div>
+              <p class="detail-bio" id="detail-bio">A stalwart protector armed with an enchanted broadsword and tower shield.</p>
+              <div class="detail-stats">
+                <div class="stat-bar-row">
+                  <span>HP</span>
+                  <div class="stat-track"><div class="stat-fill" id="stat-hp" style="width: 85%;"></div></div>
+                </div>
+                <div class="stat-bar-row">
+                  <span>ATK</span>
+                  <div class="stat-track"><div class="stat-fill" id="stat-atk" style="width: 70%;"></div></div>
+                </div>
+                <div class="stat-bar-row">
+                  <span>SPD</span>
+                  <div class="stat-track"><div class="stat-fill" id="stat-spd" style="width: 60%;"></div></div>
+                </div>
+                <div class="stat-bar-row">
+                  <span>DEF</span>
+                  <div class="stat-track"><div class="stat-fill" id="stat-def" style="width: 90%;"></div></div>
+                </div>
+              </div>
+              <div class="skills-showcase">
+                <h4>Skills & Techniques:</h4>
+                <ul id="detail-skill-list">
+                  <li><strong>Shield Slam:</strong> Heavy bash causing stun & knockback.</li>
+                  <li><strong>Whirlwind Blade:</strong> 360-degree blade tempest slicing all foes.</li>
+                  <li><strong>Holy Aegis (Ultimate):</strong> Golden barrier rendering the hero invincible for 5s.</li>
+                </ul>
+              </div>
+              <div class="party-action-buttons">
+                <button class="menu-btn primary-glow" id="btn-set-leader">PLAY AS THIS HERO</button>
+                <button class="menu-btn secondary-btn" id="btn-toggle-companion">ASSIGN AS COMPANION</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="panel-footer">
+          <div class="party-status-indicator" id="party-status-summary">
+            Leader: <strong id="summary-leader">Sir Valen</strong> | Companions (<span id="summary-companion-count">1</span>/2): <span id="summary-companions">Lyra</span>
+          </div>
+          <button class="menu-btn" id="btn-back-from-party">◀ BACK TO MENU</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- UPGRADE / ARMORY SHOP -->
+    <div id="shop-menu" class="modal-backdrop hidden">
+      <div class="panel-box large-panel">
+        <div class="panel-header">
+          <h2>ARMORY & FORGE</h2>
+          <div class="currency-pill">
+            <span class="currency-item">🪙 <span id="shop-gold">0</span></span>
+            <span class="currency-item">💎 <span id="shop-gems">0</span></span>
+          </div>
+          <button class="btn-close" id="btn-close-shop">✖</button>
+        </div>
+        <div class="shop-grid" id="shop-grid">
+          <!-- Dynamically populated upgrades -->
+        </div>
+        <div class="panel-footer">
+          <button class="menu-btn" id="btn-back-from-shop">◀ BACK TO MENU</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS & CONTROLS -->
+    <div id="settings-menu" class="modal-backdrop hidden">
+      <div class="panel-box">
+        <div class="panel-header">
+          <h2>SETTINGS & MANUAL</h2>
+          <button class="btn-close" id="btn-close-settings">✖</button>
+        </div>
+        <div class="settings-content">
+          <div class="setting-row">
+            <label for="slider-sfx">SFX Volume:</label>
+            <input type="range" id="slider-sfx" min="0" max="1" step="0.05" value="0.7">
+          </div>
+          <div class="setting-row">
+            <label for="slider-music">Music Volume:</label>
+            <input type="range" id="slider-music" min="0" max="1" step="0.05" value="0.5">
+          </div>
+          <div class="controls-guide">
+            <h3>Battle Controls (Keyboard):</h3>
+            <table>
+              <tr><td><strong>Move:</strong></td><td>W, A, S, D or Arrow Keys</td></tr>
+              <tr><td><strong>Attack / Combo:</strong></td><td>Spacebar / J / Left Click</td></tr>
+              <tr><td><strong>Dash / Evade:</strong></td><td>Shift</td></tr>
+              <tr><td><strong>Skill 1:</strong></td><td>K / Q / Right Click</td></tr>
+              <tr><td><strong>Skill 2:</strong></td><td>L / E</td></tr>
+              <tr><td><strong>Ultimate:</strong></td><td>U / R</td></tr>
+              <tr><td><strong>Pause:</strong></td><td>P / Esc</td></tr>
+            </table>
+            <p class="hint-text">* Mobile & touch screens feature an on-screen responsive joystick and ability buttons.</p>
+          </div>
+        </div>
+        <div class="panel-footer">
+          <button class="menu-btn" id="btn-reset-save" style="color: #ff6666;">⚠️ Reset Save Data</button>
+          <button class="menu-btn primary-glow" id="btn-back-from-settings">SAVE & CLOSE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- VICTORY / DEFEAT MODAL -->
+    <div id="end-stage-modal" class="modal-backdrop hidden">
+      <div class="panel-box result-panel">
+        <h2 id="result-title" class="victory-title">VICTORY!</h2>
+        <div id="result-subtitle">Stage Cleared with Honor!</div>
+        <div class="result-stats">
+          <div class="result-row"><span>Enemies Defeated:</span> <strong id="res-kills">0</strong></div>
+          <div class="result-row"><span>Max Combo:</span> <strong id="res-combo">0</strong></div>
+          <div class="result-row"><span>Gold Earned:</span> <strong id="res-gold">+0</strong></div>
+          <div class="result-row"><span>Gems Earned:</span> <strong id="res-gems">+0</strong></div>
+        </div>
+        <div class="result-buttons">
+          <button class="menu-btn" id="btn-result-menu">CAMPAIGN MAP</button>
+          <button class="menu-btn primary-glow" id="btn-result-next">CONTINUE ⚔️</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
