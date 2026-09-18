@@ -1,246 +1,20 @@
-/**
- * MK: LEGACY ARENA
- * Complete HTML5 Action-RPG Arena Brawler inspired by Mighty Knight
- * Built with procedural audio (Web Audio API) & dynamic canvas rendering
- */
-
-// --- AUDIO SYSTEM (Procedural Web Audio) ---
-class SoundManager {
-  constructor() {
-    this.ctx = null;
-    this.sfxVolume = 0.7;
-    this.musicVolume = 0.4;
-    this.muted = false;
-    this.musicPlaying = false;
-    this.musicTimer = null;
-    this.step = 0;
-  }
-
-  init() {
-    if (!this.ctx) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      this.ctx = new AudioContext();
-    }
-    if (this.ctx.state === 'suspended') {
-      this.ctx.resume();
-    }
-  }
-
-  playTone(freq, type, duration, startVol = 0.3, endVol = 0.01) {
-    if (this.muted || !this.ctx) return;
-    try {
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
-      gain.gain.setValueAtTime(startVol * this.sfxVolume, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(Math.max(endVol, 0.0001), this.ctx.currentTime + duration);
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
-      osc.start();
-      osc.stop(this.ctx.currentTime + duration);
-    } catch (e) {}
-  }
-
-  playNoise(duration, startVol = 0.2) {
-    if (this.muted || !this.ctx) return;
-    try {
-      const bufferSize = this.ctx.sampleRate * duration;
-      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1;
-      }
-      const noise = this.ctx.createBufferSource();
-      noise.buffer = buffer;
-      const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(startVol * this.sfxVolume, this.ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
-      noise.connect(gain);
-      gain.connect(this.ctx.destination);
-      noise.start();
-    } catch (e) {}
-  }
-
-  playSwing() {
-    this.playTone(180, 'sine', 0.12, 0.25, 0.01);
-  }
-
-  playHit() {
-    this.playNoise(0.09, 0.35);
-    this.playTone(120, 'square', 0.1, 0.3, 0.01);
-  }
-
-  playCrit() {
-    this.playNoise(0.18, 0.5);
-    this.playTone(320, 'triangle', 0.25, 0.4, 0.01);
-  }
-
-  playDash() {
-    this.playTone(400, 'sine', 0.15, 0.2, 0.01);
-  }
-
-  playSkill() {
-    this.playTone(280, 'sawtooth', 0.25, 0.35, 0.01);
-  }
-
-  playUlt() {
-    this.playNoise(0.4, 0.6);
-    this.playTone(160, 'sawtooth', 0.5, 0.5, 0.01);
-  }
-
-  playCoin() {
-    this.playTone(980, 'sine', 0.08, 0.25);
-    setTimeout(() => this.playTone(1320, 'sine', 0.12, 0.2), 60);
-  }
-
-  playBossRoar() {
-    this.playTone(65, 'sawtooth', 0.7, 0.7, 0.05);
-    this.playNoise(0.5, 0.4);
-  }
-
-  playVictory() {
-    const notes = [440, 554, 659, 880];
-    notes.forEach((n, idx) => {
-      setTimeout(() => this.playTone(n, 'triangle', 0.3, 0.4), idx * 120);
-    });
-  }
-
-  playDefeat() {
-    const notes = [440, 392, 349, 293];
-    notes.forEach((n, idx) => {
-      setTimeout(() => this.playTone(n, 'sawtooth', 0.35, 0.3), idx * 150);
-    });
-  }
-
-  startMusic() {
-    if (this.musicPlaying || this.muted) return;
-    this.init();
-    this.musicPlaying = true;
-    const bassline = [110, 110, 130, 110, 146, 130, 98, 110];
-    this.musicTimer = setInterval(() => {
-      if (this.muted || !this.musicPlaying || !this.ctx) return;
-      const note = bassline[this.step % bassline.length];
-      this.playTone(note, 'triangle', 0.2, 0.15 * this.musicVolume, 0.01);
-      if (this.step % 2 === 0) {
-        this.playNoise(0.05, 0.08 * this.musicVolume);
-      }
-      if (this.step % 4 === 2) {
-        this.playTone(70, 'sine', 0.15, 0.2 * this.musicVolume, 0.01);
-      }
-      this.step++;
-    }, 180);
-  }
-
-  stopMusic() {
-    this.musicPlaying = false;
-    if (this.musicTimer) {
-      clearInterval(this.musicTimer);
-      this.musicTimer = null;
-    }
-  }
-
-  toggleMute() {
-    this.muted = !this.muted;
-    if (this.muted) {
-      this.stopMusic();
-    } else {
-      this.startMusic();
-    }
-    return this.muted;
-  }
-}
-
-const sounds = new SoundManager();
-
-// --- HERO CLASS DEFINITIONS ---
-const HERO_ROSTER = {
-  valen: {
-    id: 'valen',
-    name: 'Sir Valen',
-    role: 'Paladin (Tank & Melee)',
-    avatar: '🗡️',
-    color: '#3b82f6',
-    armorColor: '#94a3b8',
-    weaponType: 'sword',
-    baseHp: 320,
-    baseSp: 100,
-    speed: 3.6,
-    attackPower: 35,
-    attackRange: 65,
-    attackRate: 0.35,
-    defense: 0.25,
-    critChance: 0.15,
-    skills: {
-      s1: { name: 'Shield Slam', icon: '🛡️', cd: 5.0, cost: 25, desc: 'Charges forward, slamming foes with stun and knockback.' },
-      s2: { name: 'Whirlwind Blade', icon: '🌪️', cd: 7.0, cost: 35, desc: 'Spins in a lethal circle damaging all adjacent enemies.' },
-      ult: { name: 'Holy Aegis', icon: '✨', cd: 18.0, cost: 60, desc: 'Emits a golden blast and renders the hero invulnerable for 5s.' }
-    }
-  },
-  lyra: {
-    id: 'lyra',
-    name: 'Lyra Windrunner',
-    role: 'Ranger (Swift Ranged Sniper)',
-    avatar: '🏹',
-    color: '#22c55e',
-    armorColor: '#15803d',
-    weaponType: 'bow',
-    baseHp: 220,
-    baseSp: 120,
-    speed: 4.2,
-    attackPower: 30,
-    attackRange: 260,
-    attackRate: 0.4,
-    defense: 0.12,
-    critChance: 0.28,
-    skills: {
-      s1: { name: 'Arrow Barrage', icon: '🎯', cd: 4.0, cost: 20, desc: 'Fires a rapid cone of 5 piercing arrows.' },
-      s2: { name: 'Gale Shot', icon: '💨', cd: 6.5, cost: 30, desc: 'Fires a massive spiral vortex that pierces through lines of enemies.' },
-      ult: { name: 'Rain of Arrows', icon: '🌧️', cd: 16.0, cost: 50, desc: 'Calls down a lethal storm of arrows striking all arena foes.' }
-    }
-  },
-  ignis: {
-    id: 'ignis',
-    name: 'Ignis the Pyromancer',
-    role: 'Mage (Area Burst Damage)',
-    avatar: '🔥',
-    color: '#ef4444',
-    armorColor: '#b91c1c',
-    weaponType: 'staff',
-    baseHp: 190,
-    baseSp: 160,
+LyoqCiAqIE1LOiBMRUdBQ1kgQVJFTkEKICogRmFpdGhmdWwgQWN0aW9uLVJQRyBBcmVuYSBCcmF3bGVyIGluc3BpcmVkIGJ5IE1pZ2h0eSBLbmlnaHQgJiBNaWdodHkgS25pZ2h0IExlZ2FjeQogKiBGZWF0dXJpbmcgYXV0aGVudGljIGNoaWJpIGNoYXJhY3RlciBhcnQsIHJlYWxpc3RpYyB3ZWFwb24gc2xhc2hlcywgcmVhbCBhcnJvdyBwaHlzaWNzLAogKiBkeW5hbWljIG11bHRpLWxheWVyIHN0YWdlIGxhbmRzY2FwZXMsIGFuZCBwcm9jZWR1cmFsIFdlYiBBdWRpby4KICovCgovLyAtLS0gQVVESU8gU1lTVEVNICAoUHJvY2VkdXJhbCBXZWIgQXVkaW8pIC0tLQpjbGFzcyBTb3VuZE1hbmFnZXIgewogIGNvbnN0cnVjdG9yKCkgewogICAgdGhpcy5jdHggPSBudWxsOwogICAgdGhpcy5zZnhWb2x1bWUgPSAwLjc7CiAgICB0aGlzLm11c2ljVm9sdW1lID0gMC40OwogICAgdGhpcy5tdXRlZCA9IGZhbHNlOwogICAgdGhpcy5tdXNpY1BsYXlpbmcgPSBmYWxzZTsKICAgIHRoaXMubXVzaWNUaW1lciA9IG51bGw7CiAgICB0aGlzLnN0ZXAgPSAwOwogIH0KCiAgaW5pdCgpIHsKICAgIGlmICghdGhpcy5jdHgpIHsKICAgICAgY29uc3QgQXVkaW9Db250ZXh0ID0gd2luZG93LkF1ZGlvQ29udGV4dCB8fCB3aW5kb3cud2Via2l0QXVkaW9Db250ZXh0OwogICAgICB0aGlzLmN0eCA9IG5ldyBBdWRpb0NvbnRleHQoKTsKICAgIH0KICAgIGlmICh0aGlzLmN0eC5zdGF0ZSA9PT0gJ3N1c3BlbmRlZCcpIHsKICAgICAgdGhpcy5jdHgucmVzdW1lKCk7CiAgICB9CiAgfQoKICBwbGF5VG9uZShmcmVxLCB0eXBlLCBkdXJhdGlvbiwgc3RhcnRWb2wgPSAwLjMsIGVuZFZvbCA9IDAuMDEpIHsKICAgIGlmICh0aGlzLm11dGVkIHx8ICF0aGlzLmN0eCkgcmV0dXJuOwogICAgdHJ5IHsKICAgICAgY29uc3Qgb3NjID0gdGhpcy5jdHguY3JlYXRlT3NjaWxsYXRvcigpOwogICAgICBjb25zdCBnYWluID0gdGhpcy5jdHguY3JlYXRlR2FpbigpOwogICAgICBvc2MudHlwZSA9IHR5cGU7CiAgICAgIG9zYy5mcmVxdWVuY3kuc2V0VmFsdWVBdFRpbWUoZnJlcSwgdGhpcy5jdHguY3VycmVudFRpbWUpOwogICAgICBnYWluLmdhaW4uc2V0VmFsdWVBdFRpbWUoc3RhcnRWb2wgKiB0aGlzLnNmeFZvbHVtZSwgdGhpcy5jdHguY3VycmVudFRpbWUpOwogICAgICBnYWluLmdhaW4uZXhwb25lbnRpYWxSYW1wVG9WYWx1ZUF0VGltZShNYXRoLm1heChlbmRWb2wsIDAuMDAwMSksIHRoaXMuY3R4LmN1cnJlbnRUaW1lICsgZHVyYXRpb24pOwogICAgICBvc2MuY29ubmVjdChnYWluKTsKICAgICAgZ2Fpbi5jb25uZWN0KHRoaXMuY3R4LmRlc3RpbmF0aW9uKTsKICAgICAgb3NjLnN0YXJ0KCk7CiAgICAgIG9zYy5zdG9wKHRoaXMuY3R4LmN1cnJlbnRUaW1lICsgZHVyYXRpb24pOwogICAgfSBjYXRjaCAoZSkge30KICB9CgogIHBsYXlOb2lzZShkdXJhdGlvbiwgc3RhcnRWb2wgPSAwLjIpIHsKICAgIGlmICh0aGlzLm11dGVkIHx8ICF0aGlzLmN0eCkgcmV0dXJuOwogICAgdHJ5IHsKICAgICAgY29uc3QgYnVmZmVyU2l6ZSA9IHRoaXMuY3R4LnNhbXBsZVJhdGUgKiBkdXJhdGlvbjsKICAgICAgY29uc3QgYnVmZmVyID0gdGhpcy5jdHguY3JlYXRlQnVmZmVyKDEsIGJ1ZmZlclNpemUsIHRoaXMuY3R4LnNhbXBsZVJhdGUpOwogICAgICBjb25zdCBkYXRhID0gYnVmZmVyLmdldENoYW5uZWxEYXRhKDApOwogICAgICBmb3IgKGxldCBpID0gMDsgaSA8IGJ1ZmZlclNpemU7IGkrKykgewogICAgICAgIGRhdGFbaV0gPSBNYXRoLnJhbmRvbSgpICogMiAtIDE7CiAgICAgIH0KICAgICAgY29uc3Qgbm9pc2UgPSB0aGlzLmN0eC5jcmVhdGVCdWZmZXJTb3VyY2UoKTsKICAgICAgbm9pc2UuYnVmZmVyID0gYnVmZmVyOwogICAgICBjb25zdCBnYWluID0gdGhpcy5jdHguY3JlYXRlR2FpbigpOwogICAgICBnYWluLmdhaW4uc2V0VmFsdWVBdFRpbWUoc3RhcnRWb2wgKiB0aGlzLnNmeFZvbHVtZSwgdGhpcy5jdHguY3VycmVudFRpbWUpOwogICAgICBnYWluLmdhaW4uZXhwb25lbnRpYWxSYW1wVG9WYWx1ZUF0VGltZSgwLjAwMSwgdGhpcy5jdHguY3VycmVudFRpbWUgKyBkdXJhdGlvbik7CiAgICAgIG5vaXNlLmNvbm5lY3QoZ2Fpbik7CiAgICAgIGdhaW4uY29ubmVjdCh0aGlzLmN0eC5kZXN0aW5hdGlvbik7CiAgICAgIG5vaXNlLnN0YXJ0KCk7CiAgICB9IGNhdGNoIChlKSB7fQogIH0KCgogIHBsYXlTd2luZygpIHsKICAgIHRoaXMucGxheVRvbmUoMjIwLCAnc2luZScsIDAuMDgsIDAuMywgMC4wMSk7CiAgfQoKICBwbGF5SGl0KCkgewogICAgdGhpcy5wbGF5Tm9pc2UoMC4wOCwgMC4zNSk7CiAgICB0aGlzLnBsYXlUb25lKDEzMCwgJ3NxdWFyZScsIDAuMDksIDAuMywgMC4wMSk7CiAgfQoKICBwbGF5Q3JpdCgpIHsKICAgIHRoaXMucGxheU5vaXNlKDAuMTgsIDAuNSk7CiAgICB0aGlzLnBsYXlUb25lKDM0MCwgJ3RyaWFuZ2xlJywgMC4yMiwgMC40LCAwLjAxKTsKICB9CgogIHBsYXlEYXNoKCkgewogICAgdGhpcy5wbGF5VG9uZSh0MjAsICdzaW5lJywgMC4xMiwgMC4yNSwgMC4wMSk7CiAgfQoKICBwbGF5U2tpbGwoKSB7CiAgICB0aGlzLnBsYXlUb25lKDI5MCwgJ3Nhd3Rvb3RoJywgMC4yMiwgMC4zNSwgMC4wMSk7CiAgfQoKICBwbGF5VWx0KCkgewogICAgdGhpcy5wbGF5Tm9pc2UoMC40LCAwLjYpOwogICAgdGhpcy5wbGF5VG9uZSgxNjAsICdzYXd0b290aCcsIDAuNSwgMC41LCAwLjAxKTsKICB9CgogIHBsYXlDb2luKCkgewogICAgdGhpcy5wbGF5VG9uZSg5ODAsICdzaW5lJywgMC4wOCwgMC4yNSk7CiAgICBzZXRUaW1lb3V0KCgpID0+IHRoaXMucGxheVRvbmUoMTMyMCwgJ3NpbmUnLCAwLjEyLCAwLjIpLCA2MCk7CiAgfQoKICBwbGF5Qm9zc1JvYXIoKSB7CiAgICB0aGlzLnBsYXlUb25lKDY1LCAnc2F3dG9vdGgnLCAwLjcsIDAuNywgMC4wNSk7CiAgICB0aGlzLnBsYXlOb2lzZSgwLjUsIDAuNCk7CiAgfQoKICBwbGF5VmljdG9yeSgpIHsKICAgIGNvbnN0IG5vdGVzID0gWzQ0MCwgNTU0LCA2NTksIDg4MF07CiAgICBub3Rlcy5mb3JFYWNoKChuLCBpZHgpID0+IHsKICAgICAgc2V0VGltZW91dCgoKSA9PiB0aGlzLnBsYXlUb25lKG4sICd0cmlhbmdsZScsIDAuMywgMC40KSwgaWR4ICogMTIwKTsKICAgIH0pOwogIH0KCiAgcGxheURlZmVhdCgpIHsKICAgIGNvbnN0IG5vdGVzID0gWzQ0MCwgMzkyLCAzNDksIDI5M107CiAgICBub3Rlcy5mb3JFYWNoKChuLCBpZHgpID0+IHsKICAgICAgc2V0VGltZW91dCgoKSA9PiB0aGlzLnBsYXlUb25lKG4sICdzYXd0b290aCcsIDAuMzUsIDAuMyksIGlkeCAqIDE1MCk7CiAgICB9KTsKICB9CgogIHN0YXJ0TXVzaWMoKSB7CiAgICBpZiAodGhpcy5tdXNpY1BsYXlpbmcgfHwgdGhpcy5tdXRlZCkgcmV0dXJuOwogICAgdGhpcy5pbml0KCk7CiAgICB0aGlzLm11c2ljUGxheWluZyA9IHRydWU7CiAgICBjb25zdCBiYXNzbGluZSA9IFsxMTAsIDExMCwgMTMwLCAxMTAsIDE0NiwgMTMwLCA5OCwgMTEwXTsKICAgIHRoaXMubXVzaWNUaW1lciA9IHNldEludGVydmFsKCgpID0+IHsKICAgICAgaWYgKHRoaXMubXV0ZWQgfHwgIXRoaXMubXVzaWNQbGF5aW5nIHx8ICF0aGlzLmN0eCkgcmV0dXJuOwogICAgICBjb25zdCBub3RlID0gYmFzc2xpbmVbdGhpcy5zdGVwICUgYmFzc2xpbmUubGVuZ3RoXTsKICAgICAgdGhpcy5wbGF5VG9uZShub3RlLCAndHJpYW5nbGUnLCAwLjIsIDAuMTUgKiB0aGlzLm11c2ljVm9sdW1lLCAwLjAxKTsKICAgICAgaWYgKHRoaXMuc3RlcCAlIDIgPT09IDApIHsKICAgICAgICB0aGlzLnBsYXlOb2lzZSgwLjA1LCAwLjA4ICogdGhpcy5tdXNpY1ZvbHVtZSk7CiAgICAgIH0KICAgICAgaWYgKHRoaXMuc3RlcCAlIDQgPT09IDIpIHsKICAgICAgICB0aGlzLnBsYXlUb25lKDcwLCAnc2luZScsIDAuMTUsIDAuMiAqIHRoaXMubXVzaWNWb2x1bWUsIDAuMDEpOwogICAgICB9CiAgICAgIHRoaXMuc3RlcCsrOwogICAgfSwgMTgwKTsKICB9CgogIHN0b3BNdXNpYygpIHsKICAgIHRoaXMubXVzaWNQbGF5aW5nID0gZmFsc2U7CiAgICBpZiAodGhpcy5tdXNpY1RpbWVyKSB7CiAgICAgIGNsZWFySW50ZXJ2YWwodGhpcy5tdXNpY1RpbWVyKTsKICAgICAgdGhpcy5tdXNpY1RpbWVyID0gbnVsbDsKICAgIH0KICB9CgogIHRvZ2dsZU11dGUoKSB7CiAgICB0aGlzLm11dGVkID0gIXRoaXMubXV0ZWQ7CiAgICBpZiAodGhpcy5tdXRlZCkgewogICAgICB0aGlzLnN0b3BNdXNpYygpOwogICAgfSBlbHNlIHsKICAgICAgdGhpcy5zdGFydE11c2ljKCk7CiAgICB9CiAgICByZXR1cm4gdGhpcy5tdXRlZDsKICB9Cn0KCmNvbnN0IHNvdW5kcyA9IG5ldyBTb3VuZE1hbmFnZXIoKTsKCi8vIC0tLSBIRVJPIENMQVNTIERFRklOSVRJT05TIChBQ0NVUkFURSBUTyBNSUdIVFkgS05JR0hUIExFR0FDWSkgLS0tCmNvbnN0IEhFUk9fUk9TVEVSID0gewogIHZhbGVuOiB7CiAgICBpZDogJ3ZhbGVuJywKICAgIG5hbWU6ICdTaXIgVmFsZW4nLAogICAgcm9sZTogJ0tuaWdodCAoUm95YWwgQmxhZGUpJywKICAgIGF2YXRhcjogJ/Cfj6EnLAogICAgY29sb3I6ICcjMjU2M2ViJywKICAgIGFybW9yQ29sb3I6ICcjMWQ0ZWQ4JywKICAgIHdlYXBvblR5cGU6ICdzd29yZCcsCiAgICBiYXNlSHA6IDM0MCwKICAgIGJhc2VTcDogMTAwLAogICAgc3BlZWQ6IDMuNywKICAgIGF0dGFja1Bvd2VyOiAzOCwKICAgIGF0dGFja1JhbmdlOiA3NSwKICAgIGF0dGFja1JhdGU6IDAuMzIsCiAgICBkZWZlbnNlOiAwLjI1LAogICAgY3JpdENoYW5jZTogMC4xOCwKICAgIHNraWxsczogewogICAgICBzMTogeyBuYW1lOiAnU2hpZWxkIEJhc2gnLCBpY29uOiAn8J+boc+jJywgY2Q6IDQuNSwgY29zdDogMjAsIGRlc2M6ICdDaGFyZ2VzIGZvcndhcmQsIGJhc2hpbmcgZW5lbWllcyB3aXRoIHN0dW4gYW5kIGhlYXZ5IGtub2NrYmFjay4nIH0sCiAgICAgIHMyOiB7IG5hbWU6ICdXaGlybHdpbmQgQmxhZGUnLCBpY29uOiAn8J+MqycsIGNkOiA2LjUsIGNvc3Q6IDMwLCBkZXNjOiAnU3BpbnMgaW4gYSBsZXRoYWwgY2lyY2xlIHNsaWNpbmcgYWxsIHN1cnJvdW5kaW5nIGZvZXMuJyB9LAogICAgICB1bHQ6IHsgbmFtZTogJ0hvbHkgQWVnaXMnLCBpY29uOiAn4pyo77iPJywgY2Q6IDE2LjAsIGNvc3Q6IDU1LCBkZXNjOiAnRW1pdHMgYSBibGluZGluZyBob2x5IHNob2Nrd2F2ZSBhbmQgZ3JhbnRzIGludnVsbmVyYWJpbGl0eSBmb3IgNXMuJyB9CiAgICB9CiAgfSwKICBseXJhOiB7CiAgICBpZDogJ2x5cmEnLAogICAgbmFtZTogJ0x5cmEgV2luZHJ1bm5lcicsCiAgICByb2xlOiAnQXJjaGVyIChHcmVlbiBDYXAgUmFuZ2VyKScsCiAgICBhdmF0YXI6ICfwn4+5JywKICAgIGNvbG9yOiAnIzE2YTM0YScsCiAgICBhcm1vckNvbG9yOiAnIzE1ODAzZCcsCiAgICB3ZWFwb25UeXBlOiAnYm93JywKICAgIGJhc2VIcDogMjIwLAogICAgYmFzZVNwOiAxMjAsCiAgICBzcGVlZDogNC4zLAogICAgYXR0YWNrUG93ZXI6IDMyLAogICAgYXR0YWNrUmFuZ2U6IDI4MCwKICAgIGF0dGFja1JhdGU6IDAuMzgsCiAgICBkZWZlbnNlOiAwLjEyLAogICAgY3JpdENoYW5jZTogMC4zMCwKICAgIHNraWxsczogewogICAgICBzMTogeyBuYW1lOiAnVHJpcGxlIEFycm93JywgaWNvbjogJ/Cfj68nLCBjZDogMy44LCBjb3N0OiAyMCwgZGVzYzogJ0ZpcmVzIDMgcGllcmNpbmcgY2VkYXIgYXJyb3dzIGluIGEgZm9yd2FyZCBmYW4uJyB9LAogICAgICBzMjogeyBuYW1lOiAnR2FsZSBQaWVyY2VyJywgaWNvbjogJ/CfkqgnLCBjZDogNi4wLCBjb3N0OiAzMCwgZGVzYzogJ0ZpcmVzIGEgaGlnaC1zcGVlZCBzcGlyYWwgd2luZCBhcnJvdyB0aGF0IHBlbmV0cmF0ZXMgdGhyb3VnaCByb3dzIG9mIGZvZXMuJyB9LAogICAgICB1bHQ6IHsgbmFtZTogJ1JhaW4gb2YgQXJyb3dzJywgaWNvbjogJ/CfjKfvuI8nLCBjZDogMTUuMCwgY29zdDogNTAsIGRlc2M6ICdDYWxscyBkb3duIGEgbGV0aGFsIHN0b3JtIG9mIGZlYXRoZXJlZCBhcnJvd3Mgc3RyaWtpbmcgYWxsIGFyZW5hIGVuZW1pZXMuJyB9CiAgICB9CiAgfSwKICBpZ25pczogewogICAgaWQ6ICdpZ25pcycsCiAgICBuYW1lOiAnSWduaXMgdGhlIFNvcmNlcmVyJywKICAgIHJvbGU6ICdNYWdlIChTa3VsbC1DYXAgUHlyb21hbmNlciknLAogICAgYXZhdGFyOiAn8J+UkScsCiAgICBjb2xvcjogJyM5MzMzZWEnLAogICAgYXJtb3JDb2xvcjogJyM2YjIxYTgnLAogICAgd2VhcG9uVHlwZTogJ3N0YWZmJywKICAgIGJhc2VIcDogMjAwLAogICAgYmFzZVNwOiAxNjAsCiAgICBzcGVlZDogMy41LAogICAgYXR0YWNrUG93ZXI6IDQ2LAogICAgYXR0YWNrUmFuZ2U6IDI0MCwKICAgIGF0dGFja1JhdGU6IDAuNTAsCiAgICBkZWZlbnNlOiAwLjA4LAogICAgY3JpdENoYW5jZTogMC4yMiwKICAgIHNraWxsczogewogICAgICBzMTogeyBuYW1lOiAnRmxhbWUgU3dpcmwnLCBpY29uOiAn8J+MoScsIGNkOiA0LjIsIGNvc3Q6IDI1LCBkZXNjOiAnRXJ1cHRzIGEgYmxhemluZyBzd2lybCBmcm9tIGhpcyBzcGlyYWwgc3RhZmYgaW5jaW5lcmF0aW5nIGZvZXMuJyB9LAogICAgICBzMjogeyBuYW1lOiAnR3JpbW9pcmUgV2F2ZScsIGljb246ICfwn5OWJywgY2Q6IDYuNSwgY29zdDogMzUsIGRlc2M6ICdVbmxlYXNoZXMgYXJjYW5lIHJ1bmVzIGZyb20gaGlzIGZsb2F0aW5nIGdyaW1vaXJlIGNhdXNpbmcgcmFkaWFsIGRhbWFnZS4nIH0sCiAgICAgIHVsdDogeyBuYW1lOiAnQ2F0YWNseXNtIE1ldGVvcicsIGljb246ICfimLTeuI8nLCBjZDogMTguMCwgY29zdDogNjUsIGRlc2M6ICdTdW1tb25zIGEgY29sb3NzYWwgYnVybmluZyBtZXRlb3IgdGhhdCBzaGF0dGVycyB0aGUgYmF0dGxlZmllbGQuJyB9CiAgICB9CiAgfSwKICBrYWVsOiB7CiAgICBpZDogJ2thZWwnLAogICAgbmFtZTogJ0thZWwgdGhlIFNoYWRvd2JsYWRlJywKICAgIHJvbGU6ICdSb2d1ZSAoUmVkIEJhbmRhbmEgQXNzYXNzaW4pJywKICAgIGF2YXRhcjogJ/Cfj6EnLAogICAgY29sb3I6ICcjYTg1NWY3JywKICAgIGFybW9yQ29sb3I6ICcjM2IwNzY0JywKICAgIHdlYXBvblR5cGU6ICdkYWdnZXJzJywKICAgIGJhc2VIcDogMjQwLAogICAgYmFzZVNwOiAxMTAsCiAgICBzcGVlZDogNC42LAogICAgYXR0YWNrUG93ZXI6IDQyLAogICAgYXR0YWNrUmFuZ2U6IDYwLAogICAgYXR0YWNrUmF0ZTogMC4yNCwKICAgIGRlZmVuc2U6IDAuMTUsCiAgICBjcml0Q2hhbmNlOiAwLjQyLAogICAgc2tpbGxzOiB7CiAgICAgIHMxOiB7IG5hbWU6ICdTaGFkb3cgTHVuZ2UnLCBpY29uOiAn4pqh77iPJywgY2Q6IDMuNSwgY29zdDogMjAsIGRlc2M6ICdEYXNoZXMgYmVoaW5kIHRoZSB0YXJnZXQgd2l0aCBhIGd1YXJhbnRlZWQgY3JpdGljYWwgZHVhbC1zdGFiLicgfSwKICAgICAgczI6IHsgbmFtZTogJ0JsYWRlIEZhbicsIGljb246ICfwn4+hJywgY2Q6IDUuNSwgY29zdDogMzAsIGRlc2M6ICdGbGluZ3MgMTAgdGhyb3dpbmcgZGFnZ2VycyBpbiBhIGZ1bGwgMzYwLWRlZ3JlZSByYWRpdXMuJyB9LAogICAgICB1bHQ6IHsgbmFtZTogJ0JsYWRlIFRlbXBlc3QnLCBpY29uOiAn8J+MqycsIGNkOiAxNC4wLCBjb3N0OiA1MCwgZGVzYzogJ1RlbGVwb3J0cyBpbnRvIGEgZnJlbnp5IG9mIHNsYXNoZXMgZGVjaW1hdGluZyBldmVyeSBlbmVteSBvbiBzY3JlZW4uJyB9CiAgICB9CiAgfSwKICB0aG9yYW46IHsKICAgIGlkOiAndGhvcmFuJywKICAgIG5hbWU6ICdUaG9yYW4gSXJvbmZpc3QnLAogICAgcm9sZTogJ0JlcnNlcmtlciAoV2lsZCBCYXR0bGVheGUgQnJhd2xlcStartState',
+    avatar: '🪓',
+    color: '#ea580c',
+    armorColor: '#9a3412',
+    weaponType: 'axe',
+    baseHp: 380,
+    baseSp: 90,
     speed: 3.4,
-    attackPower: 45,
-    attackRange: 220,
-    attackRate: 0.55,
-    defense: 0.08,
-    critChance: 0.22,
+    attackPower: 48,
+    attackRange: 70,
+    attackRate: 0.42,
+    defense: 0.20,
+    critChance: 0.24,
     skills: {
-      s1: { name: 'Flame Pillar', icon: '🌋', cd: 4.5, cost: 25, desc: 'Erupts a column of fire incinerating enemies.' },
-      s2: { name: 'Fire Wave', icon: '🌊', cd: 7.0, cost: 35, desc: 'Unleashes an expanding tidal ring of flames.' },
-      ult: { name: 'Cataclysm Meteor', icon: '☄️', cd: 20.0, cost: 70, desc: 'Calls down a gigantic burning meteor causing a massive explosion.' }
-    }
-  },
-  kael: {
-    id: 'kael',
-    name: 'Kael the Shadowblade',
-    role: 'Rogue (Critical Assassin)',
-    avatar: '🗡️',
-    color: '#a855f7',
-    armorColor: '#581c87',
-    weaponType: 'daggers',
-    baseHp: 240,
-    baseSp: 110,
-    speed: 4.5,
-    attackPower: 40,
-    attackRange: 55,
-    attackRate: 0.25,
-    defense: 0.15,
-    critChance: 0.40,
-    skills: {
-      s1: { name: 'Shadow Strike', icon: '⚡', cd: 4.0, cost: 20, desc: 'Teleports behind the nearest foe with guaranteed critical strike.' },
-      s2: { name: 'Blade Fan', icon: '🗡️', cd: 6.0, cost: 30, desc: 'Flings throwing daggers in all 360 degrees.' },
-      ult: { name: 'Blade Tempest', icon: '🌪️', cd: 15.0, cost: 55, desc: 'Becomes a blur of lethal shadows dashing through every enemy.' }
+      s1: { name: 'Ground Breaker', icon: '💥', cd: 4.5, cost: 25, desc: 'Slams his bearded battleaxe into the earth creating a shockwave fissure.' },
+      s2: { name: 'Berserk Cleave', icon: '🪓', cd: 6.0, cost: 30, desc: 'Executes a brutal sweeping cleave that knocks back and bleeds all foes.' },
+      ult: { name: 'Primal Rage', icon: '🔥', cd: 16.0, cost: 50, desc: 'Roars in fury, doubling attack speed and dealing massive fire-axe swings.' }
     }
   }
 };
@@ -250,7 +24,7 @@ const CAMPAIGN_STAGES = [
   {
     id: 1,
     title: 'Stage 1: Royal Courtyard',
-    desc: 'Repel the goblin warband breach at the castle outer walls.',
+    desc: 'Defend the royal castle battlements from the invading goblin siege.',
     waves: 3,
     difficulty: 'Normal',
     env: 'courtyard',
@@ -259,7 +33,7 @@ const CAMPAIGN_STAGES = [
       hp: 1200,
       atk: 45,
       spd: 2.2,
-      size: 42,
+      size: 44,
       color: '#4ade80',
       type: 'brute'
     }
@@ -267,7 +41,7 @@ const CAMPAIGN_STAGES = [
   {
     id: 2,
     title: 'Stage 2: Whispering Woods',
-    desc: 'Hunt the pack of savage shadow beasts and their alpha.',
+    desc: 'Battle through the moonlit forest beneath towering canopy trees and sunbeams.',
     waves: 3,
     difficulty: 'Challenging',
     env: 'forest',
@@ -276,7 +50,7 @@ const CAMPAIGN_STAGES = [
       hp: 1800,
       atk: 55,
       spd: 3.5,
-      size: 38,
+      size: 40,
       color: '#f87171',
       type: 'fast'
     }
@@ -284,7 +58,7 @@ const CAMPAIGN_STAGES = [
   {
     id: 3,
     title: 'Stage 3: Crypt of the Damned',
-    desc: 'Cleanse the subterranean mausoleum of the restless undead.',
+    desc: 'Cleanse the subterranean mausoleum of the restless undead beneath gothic vaults.',
     waves: 4,
     difficulty: 'Hard',
     env: 'crypt',
@@ -293,7 +67,7 @@ const CAMPAIGN_STAGES = [
       hp: 2400,
       atk: 65,
       spd: 2.5,
-      size: 40,
+      size: 42,
       color: '#c084fc',
       type: 'caster'
     }
@@ -301,7 +75,7 @@ const CAMPAIGN_STAGES = [
   {
     id: 4,
     title: 'Stage 4: Molten Depths',
-    desc: 'Descend into the volcanic heart where magma monstrosities dwell.',
+    desc: 'Descend into volcanic lava caverns where burning magma golems dwell.',
     waves: 4,
     difficulty: 'Heroic',
     env: 'lava',
@@ -310,7 +84,7 @@ const CAMPAIGN_STAGES = [
       hp: 3200,
       atk: 80,
       spd: 2.0,
-      size: 50,
+      size: 52,
       color: '#fb923c',
       type: 'brute'
     }
@@ -318,7 +92,7 @@ const CAMPAIGN_STAGES = [
   {
     id: 5,
     title: 'Stage 5: Frostpeak Bastion',
-    desc: 'Breach the frozen citadel defended by crystalline ice guardians.',
+    desc: 'Breach the frozen fortress guarded by crystalline ice knights.',
     waves: 4,
     difficulty: 'Extreme',
     env: 'ice',
@@ -327,7 +101,7 @@ const CAMPAIGN_STAGES = [
       hp: 4000,
       atk: 90,
       spd: 3.0,
-      size: 44,
+      size: 46,
       color: '#67e8f9',
       type: 'hybrid'
     }
@@ -335,7 +109,7 @@ const CAMPAIGN_STAGES = [
   {
     id: 6,
     title: 'Stage 6: The Dread Citadel',
-    desc: 'The final confrontation with Overlord Morvath at the throne of chaos.',
+    desc: 'The ultimate final confrontation with Overlord Morvath at the throne of chaos.',
     waves: 5,
     difficulty: 'LEGENDARY',
     env: 'void',
@@ -344,7 +118,7 @@ const CAMPAIGN_STAGES = [
       hp: 5500,
       atk: 110,
       spd: 3.4,
-      size: 52,
+      size: 54,
       color: '#f43f5e',
       type: 'overlord'
     }
@@ -369,18 +143,15 @@ class MKGame {
     this.width = 1080;
     this.height = 640;
 
-    // Arena Bounds
     this.arena = {
       x: 60,
-      y: 110,
+      y: 130,
       w: 960,
-      h: 470
+      h: 460
     };
 
-    // Save Data
     this.loadSaveData();
 
-    // Runtime state
     this.state = 'MENU';
     this.currentStageId = 1;
     this.currentWave = 1;
@@ -391,16 +162,15 @@ class MKGame {
     this.enemies = [];
     this.projectiles = [];
     this.particles = [];
+    this.ambientParticles = [];
     this.damageTexts = [];
     this.loots = [];
     this.activeBoss = null;
 
-    // Input state
     this.keys = {};
     this.mouse = { x: 0, y: 0, down: false };
     this.touchJoystick = { active: false, startX: 0, startY: 0, dx: 0, dy: 0 };
 
-    // Stats
     this.stageKills = 0;
     this.stageGold = 0;
     this.stageGems = 0;
@@ -413,8 +183,9 @@ class MKGame {
     this.selectedHeroDetailId = 'valen';
     this.selectedStageDeployId = 1;
 
-    // Timing
     this.lastTime = performance.now();
+
+    this.initAmbientParticles();
 
     this.bindEvents();
     this.renderHeroList();
@@ -423,8 +194,21 @@ class MKGame {
     this.updateCurrencyUI();
     this.updatePartySummary();
 
-    // Start Main Loop
     requestAnimationFrame(this.loop.bind(this));
+  }
+
+  initAmbientParticles() {
+    this.ambientParticles = [];
+    for (let i = 0; i < 25; i++) {
+      this.ambientParticles.push({
+        x: Math.random() * this.width,
+        y: Math.random() * this.height,
+        vx: (Math.random() - 0.5) * 0.6,
+        vy: -0.4 - Math.random() * 0.6,
+        size: 2 + Math.random() * 2.5,
+        alpha: 0.3 + Math.random() * 0.5
+      });
+    }
   }
 
   loadSaveData() {
@@ -432,6 +216,9 @@ class MKGame {
     if (raw) {
       try {
         this.save = JSON.parse(raw);
+        if (!this.save.unlockedHeroes.includes('thoran')) {
+          this.save.unlockedHeroes.push('thoran');
+        }
       } catch (e) {
         this.resetDefaultSave();
       }
@@ -446,7 +233,7 @@ class MKGame {
       gems: 10,
       leader: 'valen',
       companions: ['lyra'],
-      unlockedHeroes: ['valen', 'lyra', 'ignis', 'kael'],
+      unlockedHeroes: ['valen', 'lyra', 'ignis', 'kael', 'thoran'],
       highestStage: 1,
       upgrades: { hp: 0, atk: 0, def: 0, spd: 0, crit: 0, cdr: 0 }
     };
@@ -658,10 +445,10 @@ class MKGame {
   }
 
   updatePartySummary() {
-    const leaderHero = HERO_ROSTER[this.save.leader];
+    const leaderHero = HERO_ROSTER[this.save.leader] || HERO_ROSTER.valen;
     document.getElementById('summary-leader').innerText = leaderHero.name;
     document.getElementById('summary-companion-count').innerText = this.save.companions.length;
-    const compNames = this.save.companions.map(c => HERO_ROSTER[c].name).join(', ') || 'None';
+    const compNames = this.save.companions.map(c => HERO_ROSTER[c]?.name || c).join(', ') || 'None';
     document.getElementById('summary-companions').innerText = compNames;
   }
 
@@ -853,12 +640,12 @@ class MKGame {
     document.getElementById('hud').classList.remove('hidden');
 
     const mult = this.getStatMultipliers();
-    const leaderDef = HERO_ROSTER[this.save.leader];
+    const leaderDef = HERO_ROSTER[this.save.leader] || HERO_ROSTER.valen;
     this.player = new Combatant(this, {
       ...leaderDef,
       isPlayer: true,
       x: 200,
-      y: 350,
+      y: 360,
       maxHp: leaderDef.baseHp * mult.hpMult,
       maxSp: leaderDef.baseSp,
       attackPower: leaderDef.attackPower * mult.atkMult,
@@ -871,12 +658,13 @@ class MKGame {
     this.companions = [];
     this.save.companions.forEach((compId, index) => {
       const compDef = HERO_ROSTER[compId];
+      if (!compDef) return;
       const comp = new Combatant(this, {
         ...compDef,
         isPlayer: false,
         isCompanion: true,
         x: 160 + index * 40,
-        y: 280 + index * 100,
+        y: 290 + index * 100,
         maxHp: compDef.baseHp * mult.hpMult * 0.9,
         maxSp: compDef.baseSp,
         attackPower: compDef.attackPower * mult.atkMult * 0.85,
@@ -1149,6 +937,17 @@ class MKGame {
       }
     }
 
+    this.ambientParticles.forEach(p => {
+      p.x += p.vx;
+      p.y += p.vy;
+      if (p.y < 0) {
+        p.y = this.height;
+        p.x = Math.random() * this.width;
+      }
+      if (p.x < 0) p.x = this.width;
+      if (p.x > this.width) p.x = 0;
+    });
+
     if (this.player && !this.player.isDead) {
       this.player.update(dt);
       this.loots.forEach(loot => {
@@ -1255,15 +1054,20 @@ class MKGame {
     }
 
     this.drawArena();
+    this.drawAmbientAtmosphere();
 
     this.loots.forEach(loot => {
+      this.ctx.save();
       this.ctx.fillStyle = loot.type === 'gem' ? '#38bdf8' : '#eab308';
+      this.ctx.shadowColor = loot.type === 'gem' ? '#38bdf8' : '#eab308';
+      this.ctx.shadowBlur = 8;
       this.ctx.beginPath();
       this.ctx.arc(loot.x, loot.y, 6, 0, Math.PI * 2);
       this.ctx.fill();
       this.ctx.strokeStyle = '#fff';
       this.ctx.lineWidth = 1.5;
       this.ctx.stroke();
+      this.ctx.restore();
     });
 
     const entities = [];
@@ -1271,13 +1075,6 @@ class MKGame {
     this.companions.forEach(c => entities.push(c));
     this.enemies.forEach(e => entities.push(e));
     entities.sort((a, b) => a.y - b.y);
-
-    entities.forEach(ent => {
-      this.ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      this.ctx.beginPath();
-      this.ctx.ellipse(ent.x, ent.y + ent.radius * 0.7, ent.radius * 0.9, ent.radius * 0.35, 0, 0, Math.PI * 2);
-      this.ctx.fill();
-    });
 
     entities.forEach(ent => ent.draw(this.ctx));
     this.projectiles.forEach(p => p.draw(this.ctx));
@@ -1305,74 +1102,276 @@ class MKGame {
     const stage = CAMPAIGN_STAGES.find(s => s.id === this.currentStageId) || CAMPAIGN_STAGES[0];
     const env = stage.env;
 
-    this.ctx.fillStyle = '#0f172a';
+    if (env === 'forest') {
+      this.drawForestLandscape();
+    } else if (env === 'courtyard') {
+      this.drawCourtyardLandscape();
+    } else if (env === 'crypt') {
+      this.drawCryptLandscape();
+    } else if (env === 'lava') {
+      this.drawLavaLandscape();
+    } else if (env === 'ice') {
+      this.drawIceLandscape();
+    } else {
+      this.drawVoidLandscape();
+    }
+  }
+
+  drawForestLandscape() {
+    const skyGrad = this.ctx.createLinearGradient(0, 0, 0, this.arena.y);
+    skyGrad.addColorStop(0, '#091528');
+    skyGrad.addColorStop(0.5, '#122b49');
+    skyGrad.addColorStop(1, '#1b405f');
+    this.ctx.fillStyle = skyGrad;
     this.ctx.fillRect(0, 0, this.width, this.height);
 
-    let floorColor = '#1e293b';
-    let borderColor = '#334155';
-    let tileColor = '#172033';
+    this.ctx.fillStyle = '#0d2238';
+    const trunkX = [60, 160, 290, 420, 560, 710, 850, 980];
+    trunkX.forEach(tx => {
+      this.ctx.beginPath();
+      this.ctx.moveTo(tx - 18, 0);
+      this.ctx.lineTo(tx + 22, 0);
+      this.ctx.lineTo(tx + 30, this.arena.y + 40);
+      this.ctx.lineTo(tx - 26, this.arena.y + 40);
+      this.ctx.closePath();
+      this.ctx.fill();
+    });
 
-    if (env === 'forest') {
-      floorColor = '#14281d';
-      borderColor = '#166534';
-      tileColor = '#0f1f17';
-    } else if (env === 'crypt') {
-      floorColor = '#261b2e';
-      borderColor = '#581c87';
-      tileColor = '#1f1526';
-    } else if (env === 'lava') {
-      floorColor = '#2b1313';
-      borderColor = '#991b1b';
-      tileColor = '#210d0d';
-    } else if (env === 'ice') {
-      floorColor = '#132433';
-      borderColor = '#0284c7';
-      tileColor = '#0f1d29';
-    } else if (env === 'void') {
-      floorColor = '#1b122c';
-      borderColor = '#701a75';
-      tileColor = '#140c22';
-    }
+    const beamGrad = this.ctx.createLinearGradient(0, 0, 0, this.arena.y + 120);
+    beamGrad.addColorStop(0, 'rgba(56, 189, 248, 0.16)');
+    beamGrad.addColorStop(1, 'rgba(56, 189, 248, 0.0)');
+    this.ctx.fillStyle = beamGrad;
+    const beams = [[200, 320], [500, 640], [780, 920]];
+    beams.forEach(([b1, b2]) => {
+      this.ctx.beginPath();
+      this.ctx.moveTo(b1 - 40, 0);
+      this.ctx.lineTo(b2 + 40, 0);
+      this.ctx.lineTo(b2 + 90, this.arena.y + 200);
+      this.ctx.lineTo(b1 - 90, this.arena.y + 200);
+      this.ctx.closePath();
+      this.ctx.fill();
+    });
 
-    this.ctx.fillStyle = floorColor;
+    this.ctx.fillStyle = '#091829';
+    this.ctx.beginPath();
+    this.ctx.moveTo(0, 0);
+    this.ctx.lineTo(110, 0);
+    this.ctx.lineTo(70, this.arena.y + 30);
+    this.ctx.lineTo(0, this.arena.y + 30);
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(this.width, 0);
+    this.ctx.lineTo(this.width - 110, 0);
+    this.ctx.lineTo(this.width - 60, this.arena.y + 30);
+    this.ctx.lineTo(this.width, this.arena.y + 30);
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    const grassGrad = this.ctx.createLinearGradient(0, this.arena.y, 0, this.arena.y + this.arena.h);
+    grassGrad.addColorStop(0, '#2d6a4f');
+    grassGrad.addColorStop(0.35, '#387c5c');
+    grassGrad.addColorStop(1, '#1b4332');
+    this.ctx.fillStyle = grassGrad;
     this.ctx.fillRect(this.arena.x, this.arena.y, this.arena.w, this.arena.h);
 
-    this.ctx.strokeStyle = tileColor;
+    this.ctx.fillStyle = 'rgba(82, 183, 136, 0.28)';
+    const spots = [
+      [this.arena.x + 240, this.arena.y + 120, 180, 60],
+      [this.arena.x + 580, this.arena.y + 180, 220, 75],
+      [this.arena.x + 360, this.arena.y + 320, 260, 80]
+    ];
+    spots.forEach(([sx, sy, sw, sh]) => {
+      this.ctx.beginPath();
+      this.ctx.ellipse(sx, sy, sw, sh, 0, 0, Math.PI * 2);
+      this.ctx.fill();
+    });
+
+    this.ctx.strokeStyle = '#143526';
+    this.ctx.lineWidth = 6;
+    this.ctx.strokeRect(this.arena.x, this.arena.y, this.arena.w, this.arena.h);
+
+    this.ctx.fillStyle = '#40584c';
+    for (let x = this.arena.x; x <= this.arena.x + this.arena.w; x += 120) {
+      this.ctx.beginPath();
+      this.ctx.arc(x, this.arena.y, 6, 0, Math.PI * 2);
+      this.ctx.fill();
+    }
+  }
+
+  drawCourtyardLandscape() {
+    const skyGrad = this.ctx.createLinearGradient(0, 0, 0, this.arena.y);
+    skyGrad.addColorStop(0, '#0f172a');
+    skyGrad.addColorStop(1, '#334155');
+    this.ctx.fillStyle = skyGrad;
+    this.ctx.fillRect(0, 0, this.width, this.height);
+
+    this.ctx.fillStyle = '#1e293b';
+    this.ctx.fillRect(0, 40, this.width, this.arena.y - 40);
+    this.ctx.fillStyle = '#0f172a';
+    for (let x = 20; x < this.width; x += 60) {
+      this.ctx.fillRect(x, 20, 30, 25);
+    }
+
+    this.ctx.fillStyle = '#dc2626';
+    this.ctx.fillRect(180, 50, 24, 60);
+    this.ctx.fillRect(820, 50, 24, 60);
+    this.ctx.fillStyle = '#ffd700';
+    this.ctx.fillRect(188, 60, 8, 40);
+    this.ctx.fillRect(828, 60, 8, 40);
+
+    const torchFlicker = Math.sin(Date.now() * 0.01) * 3;
+    const torches = [120, 380, 680, 940];
+    torches.forEach(tx => {
+      this.ctx.fillStyle = '#78350f';
+      this.ctx.fillRect(tx - 3, 70, 6, 20);
+      this.ctx.fillStyle = '#ea580c';
+      this.ctx.shadowColor = '#f59e0b';
+      this.ctx.shadowBlur = 12;
+      this.ctx.beginPath();
+      this.ctx.arc(tx, 66 + torchFlicker, 7, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.shadowBlur = 0;
+    });
+
+    this.ctx.fillStyle = '#1e293b';
+    this.ctx.fillRect(this.arena.x, this.arena.y, this.arena.w, this.arena.h);
+
+    this.ctx.strokeStyle = '#334155';
     this.ctx.lineWidth = 1;
-    const tileSize = 60;
-    for (let x = this.arena.x; x <= this.arena.x + this.arena.w; x += tileSize) {
+    for (let x = this.arena.x; x <= this.arena.x + this.arena.w; x += 55) {
       this.ctx.beginPath();
       this.ctx.moveTo(x, this.arena.y);
       this.ctx.lineTo(x, this.arena.y + this.arena.h);
       this.ctx.stroke();
     }
-    for (let y = this.arena.y; y <= this.arena.y + this.arena.h; y += tileSize) {
+    for (let y = this.arena.y; y <= this.arena.y + this.arena.h; y += 45) {
       this.ctx.beginPath();
       this.ctx.moveTo(this.arena.x, y);
       this.ctx.lineTo(this.arena.x + this.arena.w, y);
       this.ctx.stroke();
     }
+  }
 
-    this.ctx.strokeStyle = borderColor;
-    this.ctx.lineWidth = 8;
-    this.ctx.strokeRect(this.arena.x, this.arena.y, this.arena.w, this.arena.h);
+  drawCryptLandscape() {
+    this.ctx.fillStyle = '#0b0714';
+    this.ctx.fillRect(0, 0, this.width, this.height);
 
-    const corners = [
-      [this.arena.x, this.arena.y],
-      [this.arena.x + this.arena.w, this.arena.y],
-      [this.arena.x, this.arena.y + this.arena.h],
-      [this.arena.x + this.arena.w, this.arena.y + this.arena.h]
-    ];
-    corners.forEach(([cx, cy]) => {
-      this.ctx.fillStyle = '#ffd700';
+    this.ctx.fillStyle = '#1e162a';
+    for (let x = 100; x < this.width; x += 180) {
+      this.ctx.fillRect(x, 10, 24, this.arena.y);
       this.ctx.beginPath();
-      this.ctx.arc(cx, cy, 8, 0, Math.PI * 2);
+      this.ctx.arc(x + 12, 40, 45, Math.PI, Math.PI * 2);
       this.ctx.fill();
+    }
+
+    this.ctx.fillStyle = '#170f24';
+    this.ctx.fillRect(this.arena.x, this.arena.y, this.arena.w, this.arena.h);
+
+    this.ctx.fillStyle = 'rgba(192, 132, 252, 0.12)';
+    this.ctx.fillRect(this.arena.x, this.arena.y + this.arena.h - 80, this.arena.w, 80);
+  }
+
+  drawLavaLandscape() {
+    const skyGrad = this.ctx.createLinearGradient(0, 0, 0, this.arena.y);
+    skyGrad.addColorStop(0, '#1c0a0a');
+    skyGrad.addColorStop(1, '#450a0a');
+    this.ctx.fillStyle = skyGrad;
+    this.ctx.fillRect(0, 0, this.width, this.height);
+
+    this.ctx.fillStyle = '#ea580c';
+    this.ctx.shadowColor = '#f97316';
+    this.ctx.shadowBlur = 20;
+    this.ctx.fillRect(200, 20, 30, this.arena.y - 20);
+    this.ctx.fillRect(800, 20, 30, this.arena.y - 20);
+    this.ctx.shadowBlur = 0;
+
+    this.ctx.fillStyle = '#1c1917';
+    this.ctx.fillRect(this.arena.x, this.arena.y, this.arena.w, this.arena.h);
+
+    this.ctx.strokeStyle = '#ea580c';
+    this.ctx.lineWidth = 2.5;
+    this.ctx.beginPath();
+    this.ctx.moveTo(this.arena.x + 150, this.arena.y + 100);
+    this.ctx.lineTo(this.arena.x + 320, this.arena.y + 220);
+    this.ctx.lineTo(this.arena.x + 280, this.arena.y + 360);
+    this.ctx.stroke();
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(this.arena.x + 650, this.arena.y + 80);
+    this.ctx.lineTo(this.arena.x + 780, this.arena.y + 250);
+    this.ctx.stroke();
+  }
+
+  drawIceLandscape() {
+    const skyGrad = this.ctx.createLinearGradient(0, 0, 0, this.arena.y);
+    skyGrad.addColorStop(0, '#0c1a2e');
+    skyGrad.addColorStop(1, '#1e3a5f');
+    this.ctx.fillStyle = skyGrad;
+    this.ctx.fillRect(0, 0, this.width, this.height);
+
+    this.ctx.fillStyle = '#0e2338';
+    for (let x = 60; x < this.width; x += 140) {
+      this.ctx.beginPath();
+      this.ctx.moveTo(x, 15);
+      this.ctx.lineTo(x + 35, this.arena.y);
+      this.ctx.lineTo(x - 35, this.arena.y);
+      this.ctx.closePath();
+      this.ctx.fill();
+    }
+
+    this.ctx.fillStyle = '#13283f';
+    this.ctx.fillRect(this.arena.x, this.arena.y, this.arena.w, this.arena.h);
+
+    this.ctx.strokeStyle = '#67e8f9';
+    this.ctx.lineWidth = 1.5;
+    this.ctx.beginPath();
+    this.ctx.moveTo(this.arena.x + 200, this.arena.y + 60);
+    this.ctx.lineTo(this.arena.x + 350, this.arena.y + 180);
+    this.ctx.lineTo(this.arena.x + 500, this.arena.y + 120);
+    this.ctx.stroke();
+  }
+
+  drawVoidLandscape() {
+    this.ctx.fillStyle = '#05030a';
+    this.ctx.fillRect(0, 0, this.width, this.height);
+
+    this.ctx.fillStyle = '#1e1b4b';
+    this.ctx.fillRect(160, 30, 22, 65);
+    this.ctx.fillRect(480, 15, 26, 80);
+    this.ctx.fillRect(840, 25, 24, 70);
+
+    this.ctx.fillStyle = '#110c1f';
+    this.ctx.fillRect(this.arena.x, this.arena.y, this.arena.w, this.arena.h);
+
+    this.ctx.strokeStyle = '#f43f5e';
+    this.ctx.lineWidth = 2;
+    this.ctx.shadowColor = '#f43f5e';
+    this.ctx.shadowBlur = 10;
+    this.ctx.beginPath();
+    this.ctx.arc(this.arena.x + this.arena.w / 2, this.arena.y + this.arena.h / 2, 120, 0, Math.PI * 2);
+    this.ctx.stroke();
+    this.ctx.shadowBlur = 0;
+  }
+
+  drawAmbientAtmosphere() {
+    const stage = CAMPAIGN_STAGES.find(s => s.id === this.currentStageId) || CAMPAIGN_STAGES[0];
+    const isForest = stage.env === 'forest';
+    const isLava = stage.env === 'lava';
+
+    this.ambientParticles.forEach(p => {
+      this.ctx.save();
+      this.ctx.fillStyle = isLava ? `rgba(249, 115, 22, ${p.alpha})` : isForest ? `rgba(134, 239, 172, ${p.alpha})` : `rgba(224, 242, 254, ${p.alpha})`;
+      this.ctx.beginPath();
+      this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.restore();
     });
   }
 }
 
-// --- COMBATANT (HERO / COMPANION) CLASS WITH MIGHTY KNIGHT SPRITE RENDERING ---
+// --- COMBATANT (HERO / COMPANION) CLASS ---
 class Combatant {
   constructor(game, config) {
     this.game = game;
@@ -1415,11 +1414,11 @@ class Combatant {
     this.swingAnim = 0;
     this.hitFlash = 0;
 
+    this.comboStep = 1;
+    this.walkCycle = 0;
+
     this.aiTarget = null;
     this.aiSkillCooldown = 2.0;
-
-    // Mighty Knight animation cycles
-    this.walkCycle = 0;
   }
 
   update(dt) {
@@ -1432,7 +1431,7 @@ class Combatant {
     if (this.dashDuration > 0) this.dashDuration -= dt;
     if (this.invulnerableTimer > 0) this.invulnerableTimer -= dt;
     if (this.hitFlash > 0) this.hitFlash -= dt;
-    if (this.swingAnim > 0) this.swingAnim -= dt * 6;
+    if (this.swingAnim > 0) this.swingAnim -= dt * 6.5;
 
     Object.keys(this.skillTimers).forEach(k => {
       if (this.skillTimers[k] > 0) this.skillTimers[k] -= dt;
@@ -1509,7 +1508,7 @@ class Combatant {
       return;
     }
 
-    const desiredDist = this.weaponType === 'sword' || this.weaponType === 'daggers' ? 50 : 180;
+    const desiredDist = (this.weaponType === 'sword' || this.weaponType === 'daggers' || this.weaponType === 'axe') ? 55 : 190;
     const dx = closest.x - this.x;
     const dy = closest.y - this.y;
     const dist = Math.hypot(dx, dy);
@@ -1540,6 +1539,7 @@ class Combatant {
     if (this.attackTimer > 0) return;
     this.attackTimer = this.attackRate;
     this.swingAnim = 1.0;
+    this.comboStep = (this.comboStep % 3) + 1;
 
     sounds.playSwing();
 
@@ -1547,28 +1547,28 @@ class Combatant {
       this.game.projectiles.push(new Projectile(this.game, {
         x: this.x + this.facing * 24,
         y: this.y - 6,
-        vx: this.facing * 14,
-        vy: (Math.random() * 2 - 1) * 0.6,
+        vx: this.facing * 15,
+        vy: (Math.random() * 2 - 1) * 0.5,
         damage: this.attackPower,
         critChance: this.critChance,
         isFromPlayer: true,
         type: 'arrow',
-        color: '#22c55e'
+        color: '#854d0e'
       }));
     } else if (this.weaponType === 'staff') {
       this.game.projectiles.push(new Projectile(this.game, {
         x: this.x + this.facing * 26,
         y: this.y - 10,
-        vx: this.facing * 10,
-        vy: (Math.random() * 2 - 1) * 0.8,
+        vx: this.facing * 11,
+        vy: (Math.random() * 2 - 1) * 0.6,
         damage: this.attackPower,
         critChance: this.critChance,
         isFromPlayer: true,
         type: 'fireball',
-        color: '#ef4444'
+        color: '#f97316'
       }));
     } else {
-      const hitBoxX = this.x + this.facing * (this.attackRange * 0.6);
+      const hitBoxX = this.x + this.facing * (this.attackRange * 0.65);
       const hitBoxY = this.y;
       const hitRadius = this.attackRange;
 
@@ -1577,8 +1577,8 @@ class Combatant {
         const d = Math.hypot(e.x - hitBoxX, e.y - hitBoxY);
         if (d <= hitRadius + e.radius) {
           const isCrit = Math.random() < this.critChance;
-          const dmg = Math.floor(this.attackPower * (isCrit ? 1.8 : 1.0));
-          e.takeDamage(dmg, isCrit, this.facing);
+          const dmg = Math.floor(this.attackPower * (isCrit ? 1.8 : 1.0) * (this.comboStep === 3 ? 1.35 : 1.0));
+          e.takeDamage(dmg, isCrit, this.facing * (this.comboStep === 3 ? 2.2 : 1.0));
           hitCount++;
         }
       });
@@ -1639,26 +1639,26 @@ class Combatant {
       }
     } else if (this.id === 'lyra') {
       if (slot === 's1') {
-        for (let a = -2; a <= 2; a++) {
+        for (let a = -1; a <= 1; a++) {
           this.game.projectiles.push(new Projectile(this.game, {
             x: this.x + this.facing * 24,
             y: this.y - 6,
-            vx: this.facing * 13,
-            vy: a * 1.8,
-            damage: this.attackPower * 1.2,
+            vx: this.facing * 15,
+            vy: a * 2.2,
+            damage: this.attackPower * 1.3,
             critChance: this.critChance,
             isFromPlayer: true,
             type: 'arrow',
-            color: '#22c55e'
+            color: '#854d0e'
           }));
         }
       } else if (slot === 's2') {
         this.game.projectiles.push(new Projectile(this.game, {
           x: this.x + this.facing * 24,
           y: this.y - 6,
-          vx: this.facing * 16,
+          vx: this.facing * 18,
           vy: 0,
-          damage: this.attackPower * 3.0,
+          damage: this.attackPower * 3.2,
           critChance: 0.5,
           isFromPlayer: true,
           type: 'gale',
@@ -1667,15 +1667,15 @@ class Combatant {
       } else if (slot === 'ult') {
         this.game.enemies.forEach(e => {
           this.game.projectiles.push(new Projectile(this.game, {
-            x: e.x + (Math.random() * 40 - 20),
+            x: e.x + (Math.random() * 30 - 15),
             y: 0,
             vx: 0,
-            vy: 18,
+            vy: 20,
             damage: this.attackPower * 2.8,
             critChance: 0.4,
             isFromPlayer: true,
             type: 'arrow',
-            color: '#4ade80'
+            color: '#854d0e'
           }));
         });
       }
@@ -1745,6 +1745,32 @@ class Combatant {
           this.game.spawnParticle(e.x, e.y, '#9333ea', 8, 15);
         });
       }
+    } else if (this.id === 'thoran') {
+      if (slot === 's1') {
+        this.game.screenShake = 12;
+        const targetX = this.x + this.facing * 80;
+        this.game.spawnParticle(targetX, this.y, '#f97316', 8, 20);
+        this.game.enemies.forEach(e => {
+          if (Math.hypot(e.x - targetX, e.y - this.y) < 110) {
+            e.takeDamage(this.attackPower * 2.6, true, this.facing * 2);
+          }
+        });
+      } else if (slot === 's2') {
+        this.game.spawnParticle(this.x, this.y, '#dc2626', 10, 25);
+        this.game.enemies.forEach(e => {
+          if (Math.hypot(e.x - this.x, e.y - this.y) < 125) {
+            e.takeDamage(this.attackPower * 2.8, true, Math.sign(e.x - this.x));
+          }
+        });
+      } else if (slot === 'ult') {
+        this.attackRate = 0.22;
+        this.speed = 4.6;
+        setTimeout(() => {
+          this.attackRate = HERO_ROSTER.thoran.attackRate;
+          this.speed = HERO_ROSTER.thoran.speed;
+        }, 6000);
+        this.game.spawnParticle(this.x, this.y, '#ef4444', 12, 30);
+      }
     }
   }
 
@@ -1779,11 +1805,10 @@ class Combatant {
     const bobY = isWalking ? Math.abs(Math.sin(this.walkCycle)) * 4 : Math.sin(Date.now() * 0.003) * 1.5;
     const legAngleL = isWalking ? Math.sin(this.walkCycle) * 0.5 : 0;
     const legAngleR = isWalking ? -Math.sin(this.walkCycle) * 0.5 : 0;
-    const capeSway = isWalking ? Math.sin(this.walkCycle * 0.5) * 8 : Math.sin(Date.now() * 0.003) * 4;
 
     ctx.translate(this.x, this.y);
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
     ctx.beginPath();
     ctx.ellipse(0, 18, 22, 9, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -1808,13 +1833,15 @@ class Combatant {
     }
 
     if (this.id === 'valen') {
-      this.drawSirValen(ctx, legAngleL, legAngleR, capeSway);
+      this.drawSirValen(ctx, legAngleL, legAngleR);
     } else if (this.id === 'lyra') {
-      this.drawLyra(ctx, legAngleL, legAngleR, capeSway);
+      this.drawLyra(ctx, legAngleL, legAngleR);
     } else if (this.id === 'ignis') {
-      this.drawIgnis(ctx, legAngleL, legAngleR, capeSway);
+      this.drawIgnis(ctx, legAngleL, legAngleR);
     } else if (this.id === 'kael') {
-      this.drawKael(ctx, legAngleL, legAngleR, capeSway);
+      this.drawKael(ctx, legAngleL, legAngleR);
+    } else if (this.id === 'thoran') {
+      this.drawThoran(ctx, legAngleL, legAngleR);
     }
 
     ctx.restore();
@@ -1840,183 +1867,178 @@ class Combatant {
     }
   }
 
-  drawSirValen(ctx, legL, legR, capeSway) {
-    ctx.save();
-    ctx.fillStyle = '#1d4ed8';
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(-6, -18);
-    ctx.quadraticCurveTo(-22 - capeSway, -6, -26 - capeSway, 14);
-    ctx.lineTo(-8 - capeSway * 0.5, 12);
-    ctx.quadraticCurveTo(-4, 0, 4, -16);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
-
+  drawSirValen(ctx, legL, legR) {
     ctx.save();
     ctx.translate(-7, 4);
     ctx.rotate(legL);
-    ctx.fillStyle = '#64748b';
+    ctx.fillStyle = '#1d4ed8';
     ctx.fillRect(-4, 0, 8, 14);
-    ctx.fillStyle = '#475569';
+    ctx.fillStyle = '#3b82f6';
+    ctx.fillRect(-5, 4, 10, 5);
+    ctx.fillStyle = '#1e293b';
     ctx.fillRect(-4, 11, 10, 5);
     ctx.restore();
 
     ctx.save();
     ctx.translate(7, 4);
     ctx.rotate(legR);
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillStyle = '#2563eb';
     ctx.fillRect(-4, 0, 8, 14);
-    ctx.fillStyle = '#475569';
+    ctx.fillStyle = '#60a5fa';
+    ctx.fillRect(-5, 4, 10, 5);
+    ctx.fillStyle = '#1e293b';
     ctx.fillRect(-3, 11, 11, 5);
     ctx.restore();
 
-    ctx.fillStyle = '#94a3b8';
+    ctx.fillStyle = '#2563eb';
     ctx.beginPath();
-    ctx.roundRect(-14, -18, 28, 24, 6);
+    ctx.roundRect(-13, -16, 26, 22, 5);
     ctx.fill();
-    ctx.strokeStyle = '#475569';
+    ctx.strokeStyle = '#1d4ed8';
     ctx.lineWidth = 2;
     ctx.stroke();
 
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(-13, 1, 26, 5);
     ctx.fillStyle = '#ffd700';
-    ctx.fillRect(-3, -16, 6, 18);
-    ctx.fillRect(-9, -12, 18, 5);
-
-    ctx.fillStyle = '#451a03';
-    ctx.fillRect(-14, 2, 28, 5);
-    ctx.fillStyle = '#f59e0b';
-    ctx.fillRect(-4, 1, 8, 7);
-
-    ctx.save();
-    ctx.translate(0, -26);
-
-    ctx.fillStyle = '#f59e0b';
-    ctx.beginPath();
-    ctx.moveTo(-16, -16);
-    ctx.lineTo(-6, -24);
-    ctx.lineTo(0, -18);
-    ctx.lineTo(6, -24);
-    ctx.lineTo(16, -16);
-    ctx.lineTo(0, -12);
-    ctx.closePath();
-    ctx.fill();
     ctx.strokeStyle = '#b45309';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-4, 0, 8, 7);
 
-    ctx.fillStyle = '#cbd5e1';
+    ctx.fillStyle = '#1d4ed8';
     ctx.beginPath();
-    ctx.arc(0, 0, 17, 0, Math.PI * 2);
+    ctx.arc(-11, -14, 7, 0, Math.PI * 2);
+    ctx.arc(11, -14, 7, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#64748b';
-    ctx.lineWidth = 2.5;
-    ctx.stroke();
-
-    ctx.fillStyle = '#0f172a';
-    ctx.beginPath();
-    ctx.roundRect(1, -3, 15, 6, 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#38bdf8';
-    ctx.shadowColor = '#38bdf8';
-    ctx.shadowBlur = 8;
-    ctx.fillRect(4, -2, 4, 4);
-    ctx.fillRect(10, -2, 4, 4);
-    ctx.restore();
 
     ctx.save();
-    ctx.translate(-10, -8);
-    ctx.fillStyle = '#1e3a8a';
+    ctx.translate(0, -25);
+
+    ctx.fillStyle = '#fed7aa';
     ctx.beginPath();
-    ctx.moveTo(-6, -14);
-    ctx.lineTo(8, -14);
-    ctx.lineTo(8, 4);
-    ctx.lineTo(1, 18);
-    ctx.lineTo(-6, 4);
+    ctx.arc(2, 3, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(2, 4, 8, 3.5);
+    ctx.strokeStyle = '#991b1b';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(2, 4, 8, 3.5);
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.beginPath();
+    ctx.moveTo(-6, -4);
+    ctx.lineTo(8, -5);
+    ctx.lineTo(12, 1);
+    ctx.lineTo(6, 2);
+    ctx.lineTo(2, 1);
+    ctx.lineTo(-2, 3);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 2.5;
+
+    ctx.fillStyle = '#1d4ed8';
+    ctx.beginPath();
+    ctx.arc(0, -6, 16, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#1e3a8a';
+    ctx.lineWidth = 2;
     ctx.stroke();
 
-    ctx.fillStyle = '#ffd700';
-    ctx.fillRect(0, -11, 3, 22);
-    ctx.fillRect(-4, -6, 11, 3);
+    ctx.fillStyle = '#2563eb';
+    ctx.beginPath();
+    ctx.roundRect(-8, -17, 18, 9, 3);
+    ctx.fill();
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(-5, -15, 3, 5);
+    ctx.fillRect(0, -15, 3, 5);
+    ctx.fillRect(5, -15, 3, 5);
     ctx.restore();
 
+    ctx.fillStyle = '#1d4ed8';
+    ctx.beginPath();
+    ctx.arc(-12, -4, 6, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.save();
-    ctx.translate(10, -8);
+    ctx.translate(8, -8);
 
     const isSwinging = this.swingAnim > 0;
-    const swordRot = isSwinging ? (1.2 - this.swingAnim * 2.2) * Math.PI : -0.25;
-    ctx.rotate(swordRot);
+    let swordAngle = -0.3;
+    let slashRadius = 48;
 
     if (isSwinging) {
+      const progress = 1.0 - this.swingAnim;
+      if (this.comboStep === 1) {
+        swordAngle = -0.95 + progress * 1.65;
+      } else if (this.comboStep === 2) {
+        swordAngle = 0.65 - progress * 1.5;
+      } else {
+        swordAngle = -1.3 + progress * 2.2;
+        slashRadius = 58;
+      }
+
       ctx.save();
-      const grad = ctx.createLinearGradient(0, -10, 45, 10);
-      grad.addColorStop(0, 'rgba(255, 215, 0, 0)');
-      grad.addColorStop(0.7, 'rgba(255, 255, 255, 0.8)');
-      grad.addColorStop(1, 'rgba(56, 189, 248, 0.9)');
-      ctx.fillStyle = grad;
+      const slashGrad = ctx.createRadialGradient(0, 0, 18, 0, 0, slashRadius);
+      slashGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+      slashGrad.addColorStop(0.75, 'rgba(147, 197, 253, 0.85)');
+      slashGrad.addColorStop(1, 'rgba(255, 255, 255, 0.95)');
+      ctx.fillStyle = slashGrad;
       ctx.beginPath();
-      ctx.arc(0, 0, 56, -Math.PI * 0.4, Math.PI * 0.35);
-      ctx.arc(0, 0, 24, Math.PI * 0.35, -Math.PI * 0.4, true);
+      if (this.comboStep === 2) {
+        ctx.arc(0, 0, slashRadius, -0.8, 0.6, false);
+        ctx.arc(0, 0, 18, 0.6, -0.8, true);
+      } else {
+        ctx.arc(0, 0, slashRadius, -0.9, 0.7, false);
+        ctx.arc(0, 0, 18, 0.7, -0.9, true);
+      }
       ctx.closePath();
       ctx.fill();
       ctx.restore();
     }
 
-    ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(0, -4, 38, 7);
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillRect(0, -1, 36, 2);
+    ctx.rotate(swordAngle);
 
-    ctx.fillStyle = '#f59e0b';
-    ctx.fillRect(-3, -9, 6, 17);
+    ctx.fillStyle = '#f1f5f9';
+    ctx.beginPath();
+    ctx.moveTo(0, -4);
+    ctx.lineTo(34, -4);
+    ctx.lineTo(44, 0);
+    ctx.lineTo(34, 4);
+    ctx.lineTo(0, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#94a3b8';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.beginPath();
+    ctx.moveTo(4, 0);
+    ctx.lineTo(32, 0);
+    ctx.stroke();
+
+    ctx.fillStyle = '#ffd700';
+    ctx.fillRect(-2, -8, 5, 16);
     ctx.fillStyle = '#451a03';
-    ctx.fillRect(-9, -3, 6, 5);
+    ctx.fillRect(-8, -2.5, 6, 5);
     ctx.fillStyle = '#ffd700';
     ctx.beginPath();
-    ctx.arc(-11, -1, 4, 0, Math.PI * 2);
+    ctx.arc(-10, 0, 4, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = '#cbd5e1';
+    ctx.fillStyle = '#1d4ed8';
     ctx.beginPath();
-    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+    ctx.arc(0, 0, 5.5, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
   }
 
-  drawLyra(ctx, legL, legR, capeSway) {
-    ctx.save();
-    ctx.translate(-8, -14);
-    ctx.rotate(-0.35);
-    ctx.fillStyle = '#78350f';
-    ctx.fillRect(-4, -12, 8, 22);
-    ctx.fillStyle = '#f59e0b';
-    ctx.fillRect(-3, -17, 3, 6);
-    ctx.fillRect(1, -19, 3, 7);
-    ctx.restore();
-
-    ctx.save();
-    ctx.fillStyle = '#15803d';
-    ctx.beginPath();
-    ctx.moveTo(-4, -18);
-    ctx.quadraticCurveTo(-18 - capeSway, -4, -20 - capeSway, 14);
-    ctx.lineTo(-6 - capeSway * 0.4, 12);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-
+  drawLyra(ctx, legL, legR) {
     ctx.save();
     ctx.translate(-6, 5);
     ctx.rotate(legL);
     ctx.fillStyle = '#78350f';
-    ctx.fillRect(-3, 0, 6, 13);
+    ctx.fillRect(-3, 0, 6, 12);
     ctx.fillStyle = '#451a03';
     ctx.fillRect(-3, 10, 8, 4);
     ctx.restore();
@@ -2025,259 +2047,396 @@ class Combatant {
     ctx.translate(6, 5);
     ctx.rotate(legR);
     ctx.fillStyle = '#92400e';
-    ctx.fillRect(-3, 0, 6, 13);
+    ctx.fillRect(-3, 0, 6, 12);
     ctx.fillStyle = '#451a03';
     ctx.fillRect(-2, 10, 9, 4);
     ctx.restore();
 
     ctx.fillStyle = '#16a34a';
     ctx.beginPath();
-    ctx.roundRect(-11, -16, 22, 21, 5);
+    ctx.roundRect(-11, -15, 22, 20, 4);
     ctx.fill();
-    ctx.fillStyle = '#854d0e';
-    ctx.fillRect(-2, -14, 4, 15);
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(-10, -10, 20, 4);
+    ctx.fillStyle = '#ffd700';
+    ctx.fillRect(-3, -11, 6, 6);
+
+    ctx.save();
+    ctx.translate(0, -24);
+
+    ctx.fillStyle = '#fed7aa';
+    ctx.beginPath();
+    ctx.arc(3, 1, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#7c3aed';
+    ctx.beginPath();
+    ctx.moveTo(-4, -6);
+    ctx.lineTo(9, -6);
+    ctx.lineTo(12, 1);
+    ctx.lineTo(8, 6);
+    ctx.lineTo(3, 3);
+    ctx.lineTo(-2, 5);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#15803d';
+    ctx.beginPath();
+    ctx.arc(0, -3, 13, Math.PI * 0.8, Math.PI * 2.2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-8, -4);
+    ctx.quadraticCurveTo(-26, -2, -28, 14);
+    ctx.lineTo(-14, 2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(10, -7);
+
+    const isShooting = this.swingAnim > 0;
+    const bowAim = isShooting ? -0.1 : 0.1;
+    ctx.rotate(bowAim);
+
+    ctx.strokeStyle = '#92400e';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(14, -22);
+    ctx.quadraticCurveTo(24, 0, 14, 22);
+    ctx.stroke();
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(14, -22);
+    ctx.lineTo(isShooting ? 0 : 12, 0);
+    ctx.lineTo(14, 22);
+    ctx.stroke();
+
+    if (isShooting) {
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(0, -1.5, 24, 3);
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.moveTo(24, -4);
+      ctx.lineTo(32, 0);
+      ctx.lineTo(24, 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ef4444';
+      ctx.fillRect(0, -3.5, 5, 2);
+      ctx.fillRect(0, 1.5, 5, 2);
+    }
+
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath();
+    ctx.arc(12, 0, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  drawIgnis(ctx, legL, legR) {
+    ctx.fillStyle = '#475569';
+    ctx.beginPath();
+    ctx.roundRect(-11, -14, 22, 22, 4);
+    ctx.fill();
+
+    ctx.fillStyle = '#7c3aed';
+    ctx.beginPath();
+    ctx.moveTo(-13, -16);
+    ctx.lineTo(13, -16);
+    ctx.lineTo(16, 16);
+    ctx.lineTo(-16, 16);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffd700';
+    ctx.beginPath();
+    ctx.arc(0, -12, 3, 0, Math.PI * 2);
+    ctx.fill();
 
     ctx.save();
     ctx.translate(0, -25);
 
-    ctx.fillStyle = '#15803d';
+    ctx.fillStyle = '#6366f1';
     ctx.beginPath();
-    ctx.arc(0, 0, 16, 0, Math.PI * 2);
+    ctx.arc(0, 4, 11, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = '#166534';
-    ctx.lineWidth = 2;
-    ctx.stroke();
 
     ctx.fillStyle = '#fed7aa';
     ctx.beginPath();
-    ctx.arc(4, 1, 10, 0, Math.PI * 2);
+    ctx.arc(2, 2, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#881337';
+    ctx.beginPath();
+    ctx.arc(4, 5, 3, 0, Math.PI);
+    ctx.fill();
+
+    ctx.fillStyle = '#581c87';
+    ctx.beginPath();
+    ctx.ellipse(0, -2, 19, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(-11, -3);
+    ctx.quadraticCurveTo(-14, -24, 6, -26);
+    ctx.lineTo(11, -3);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.beginPath();
+    ctx.arc(0, -6, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(-2, -6, 1.5, 1.5);
+    ctx.fillRect(0.5, -6, 1.5, 1.5);
+
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-14, -6);
+    const bookBob = Math.sin(Date.now() * 0.006) * 3;
+    ctx.translate(0, bookBob);
+    ctx.fillStyle = '#6b21a8';
+    ctx.fillRect(-10, -10, 14, 14);
+    ctx.fillStyle = '#f472b6';
+    ctx.fillRect(-8, -8, 10, 10);
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(12, -6);
+
+    const isCasting = this.swingAnim > 0;
+    ctx.rotate(isCasting ? -0.35 : 0.1);
+
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(0, -24, 4, 38);
+
+    ctx.save();
+    ctx.translate(2, -28);
+    ctx.fillStyle = '#f59e0b';
+    ctx.shadowColor = '#fbbf24';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(0, 0, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#d97706';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, 6, 0, Math.PI * 1.5);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  drawKael(ctx, legL, legR) {
+    ctx.save();
+    ctx.translate(-6, 5);
+    ctx.rotate(legL);
+    ctx.fillStyle = '#1e1b4b';
+    ctx.fillRect(-3, 0, 6, 12);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillRect(-4, 3, 8, 4);
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(6, 5);
+    ctx.rotate(legR);
+    ctx.fillStyle = '#1e1b4b';
+    ctx.fillRect(-3, 0, 6, 12);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillRect(-4, 3, 8, 4);
+    ctx.restore();
+
+    ctx.fillStyle = '#581c87';
+    ctx.beginPath();
+    ctx.roundRect(-10, -15, 20, 20, 4);
+    ctx.fill();
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(-10, -4, 20, 3.5);
+
+    ctx.fillStyle = '#dc2626';
+    ctx.beginPath();
+    ctx.roundRect(-12, -18, 24, 8, 4);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-10, -14);
+    ctx.lineTo(-24, -8);
+    ctx.lineTo(-20, -2);
+    ctx.lineTo(-8, -10);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(0, -25);
+
+    ctx.fillStyle = '#78350f';
+    ctx.beginPath();
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(6, -6);
+    ctx.lineTo(14, 0);
+    ctx.lineTo(8, 4);
+    ctx.fill();
+
+    ctx.fillStyle = '#fed7aa';
+    ctx.beginPath();
+    ctx.arc(4, 2, 8, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(-12, -6, 24, 4);
+    ctx.restore();
+
+    const isSwinging = this.swingAnim > 0;
+
+    ctx.save();
+    ctx.translate(8, -6);
+    const daggerRot = isSwinging ? (this.comboStep === 1 ? -0.8 + (1.0 - this.swingAnim) * 1.6 : 0.6 - (1.0 - this.swingAnim) * 1.5) : 0.3;
+    ctx.rotate(daggerRot);
+
+    if (isSwinging) {
+      ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, 28, -Math.PI * 0.3, Math.PI * 0.3);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, -2, 20, 4);
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(-4, -4, 4, 8);
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(-8, -4);
+    ctx.rotate(-0.5);
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(-18, -2, 18, 4);
+    ctx.fillStyle = '#dc2626';
+    ctx.fillRect(0, -4, 4, 8);
+    ctx.restore();
+  }
+
+  drawThoran(ctx, legL, legR) {
+    ctx.save();
+    ctx.translate(-7, 4);
+    ctx.rotate(legL);
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(-4, 0, 8, 14);
+    ctx.fillStyle = '#451a03';
+    ctx.fillRect(-4, 11, 10, 5);
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(7, 4);
+    ctx.rotate(legR);
+    ctx.fillStyle = '#92400e';
+    ctx.fillRect(-4, 0, 8, 14);
+    ctx.fillStyle = '#451a03';
+    ctx.fillRect(-3, 11, 11, 5);
+    ctx.restore();
+
+    ctx.fillStyle = '#fed7aa';
+    ctx.beginPath();
+    ctx.roundRect(-13, -16, 26, 21, 4);
+    ctx.fill();
+    ctx.fillStyle = '#451a03';
+    ctx.beginPath();
+    ctx.moveTo(-13, -16);
+    ctx.lineTo(-7, -16);
+    ctx.lineTo(13, 3);
+    ctx.lineTo(7, 3);
+    ctx.closePath();
     ctx.fill();
 
     ctx.fillStyle = '#b45309';
     ctx.beginPath();
-    ctx.moveTo(-4, -8);
-    ctx.lineTo(10, -4);
-    ctx.lineTo(8, 2);
-    ctx.lineTo(2, 0);
+    ctx.arc(-12, -14, 8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffd700';
+    ctx.fillRect(-15, -20, 3, 5);
+    ctx.fillRect(-10, -21, 3, 5);
+
+    ctx.save();
+    ctx.translate(0, -25);
+
+    ctx.fillStyle = '#dc2626';
+    ctx.beginPath();
+    ctx.arc(0, 0, 16, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(-3, -4, 12, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.fillStyle = '#22c55e';
-    ctx.shadowColor = '#4ade80';
-    ctx.shadowBlur = 6;
-    ctx.fillRect(6, 0, 4, 4);
+    ctx.fillStyle = '#fed7aa';
+    ctx.beginPath();
+    ctx.arc(3, 2, 8, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
 
     ctx.save();
     ctx.translate(10, -8);
 
     const isSwinging = this.swingAnim > 0;
-    const bowDraw = isSwinging ? -0.2 : 0.15;
-    ctx.rotate(bowDraw);
-
-    ctx.strokeStyle = '#78350f';
-    ctx.lineWidth = 3.5;
-    ctx.beginPath();
-    ctx.arc(10, 0, 24, -Math.PI * 0.45, Math.PI * 0.45);
-    ctx.stroke();
-
-    ctx.strokeStyle = '#f8fafc';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(10 + Math.cos(-Math.PI * 0.45) * 24, Math.sin(-Math.PI * 0.45) * 24);
-    ctx.lineTo(isSwinging ? -2 : 6, 0);
-    ctx.lineTo(10 + Math.cos(Math.PI * 0.45) * 24, Math.sin(Math.PI * 0.45) * 24);
-    ctx.stroke();
+    let axeAngle = -0.4;
+    let slashRadius = 52;
 
     if (isSwinging) {
-      ctx.fillStyle = '#e2e8f0';
-      ctx.fillRect(-2, -1.5, 30, 3);
-      ctx.fillStyle = '#22c55e';
+      const progress = 1.0 - this.swingAnim;
+      if (this.comboStep === 1) {
+        axeAngle = -1.1 + progress * 1.8;
+      } else if (this.comboStep === 2) {
+        axeAngle = 0.7 - progress * 1.6;
+      } else {
+        axeAngle = -1.4 + progress * 2.3;
+        slashRadius = 62;
+      }
+
+      ctx.save();
+      const cleaveGrad = ctx.createRadialGradient(0, 0, 20, 0, 0, slashRadius);
+      cleaveGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+      cleaveGrad.addColorStop(0.7, 'rgba(249, 115, 22, 0.85)');
+      cleaveGrad.addColorStop(1, 'rgba(255, 255, 255, 0.95)');
+      ctx.fillStyle = cleaveGrad;
       ctx.beginPath();
-      ctx.moveTo(28, -4);
-      ctx.lineTo(34, 0);
-      ctx.lineTo(28, 4);
+      ctx.arc(0, 0, slashRadius, -0.9, 0.7, false);
+      ctx.arc(0, 0, 20, 0.7, -0.9, true);
       ctx.closePath();
       ctx.fill();
+      ctx.restore();
     }
 
-    ctx.restore();
-  }
+    ctx.rotate(axeAngle);
 
-  drawIgnis(ctx, legL, legR, capeSway) {
-    ctx.save();
-    ctx.fillStyle = '#991b1b';
+    ctx.fillStyle = '#78350f';
+    ctx.fillRect(0, -32, 6, 46);
+
+    ctx.fillStyle = '#0f172a';
     ctx.beginPath();
-    ctx.moveTo(-12, -18);
-    ctx.lineTo(12, -18);
-    ctx.quadraticCurveTo(16, 6, 12, 18);
-    ctx.lineTo(-14, 18);
-    ctx.quadraticCurveTo(-16 - capeSway, 6, -12, -18);
+    ctx.moveTo(6, -30);
+    ctx.quadraticCurveTo(34, -28, 28, -6);
+    ctx.lineTo(6, -14);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(6, -30);
+    ctx.quadraticCurveTo(34, -28, 28, -6);
     ctx.stroke();
 
-    ctx.fillStyle = '#ffd700';
-    ctx.fillRect(-12, 14, 24, 3);
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(0, -26);
-
-    ctx.fillStyle = '#7f1d1d';
-    ctx.beginPath();
-    ctx.arc(0, 0, 16, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(-10, -8);
-    ctx.lineTo(-20 - capeSway * 0.5, -24);
-    ctx.lineTo(4, -14);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = '#0f0707';
-    ctx.beginPath();
-    ctx.arc(3, 1, 10, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#fbbf24';
-    ctx.shadowColor = '#ef4444';
-    ctx.shadowBlur = 10;
-    ctx.fillRect(4, -1, 4, 3);
-    ctx.fillRect(9, -1, 4, 3);
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(12, -8);
-
-    const isSwinging = this.swingAnim > 0;
-    ctx.rotate(isSwinging ? -0.4 : 0.1);
-
-    ctx.fillStyle = '#451a03';
-    ctx.fillRect(0, -28, 5, 46);
-
-    ctx.fillStyle = '#f59e0b';
-    ctx.fillRect(-1, -22, 7, 3);
-    ctx.fillRect(-1, -12, 7, 3);
-
-    ctx.save();
-    ctx.translate(2, -32);
-    const pulse = 1 + Math.sin(Date.now() * 0.01) * 0.15;
-    ctx.scale(pulse, pulse);
-    ctx.fillStyle = '#ef4444';
-    ctx.shadowColor = '#f97316';
-    ctx.shadowBlur = 16;
-    ctx.beginPath();
-    ctx.arc(0, 0, 7, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#fef08a';
-    ctx.beginPath();
-    ctx.arc(Math.cos(Date.now() * 0.008) * 11, Math.sin(Date.now() * 0.008) * 11, 2.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.restore();
-  }
-
-  drawKael(ctx, legL, legR, capeSway) {
-    ctx.save();
-    ctx.fillStyle = '#3b0764';
-    ctx.strokeStyle = '#c084fc';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-6, -18);
-    ctx.lineTo(-24 - capeSway * 1.2, -10);
-    ctx.lineTo(-18 - capeSway, -2);
-    ctx.lineTo(-28 - capeSway * 1.5, 8);
-    ctx.lineTo(-8, 6);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(-6, 5);
-    ctx.rotate(legL);
-    ctx.fillStyle = '#1e1b4b';
-    ctx.fillRect(-3, 0, 6, 13);
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(-3, 10, 8, 4);
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(6, 5);
-    ctx.rotate(legR);
-    ctx.fillStyle = '#312e81';
-    ctx.fillRect(-3, 0, 6, 13);
-    ctx.fillStyle = '#0f172a';
-    ctx.fillRect(-2, 10, 9, 4);
-    ctx.restore();
-
-    ctx.fillStyle = '#1e1b4b';
-    ctx.beginPath();
-    ctx.roundRect(-12, -17, 24, 22, 4);
-    ctx.fill();
-    ctx.fillStyle = '#6b21a8';
-    ctx.fillRect(-10, -12, 20, 3);
-    ctx.fillRect(-10, -6, 20, 3);
-
-    ctx.save();
-    ctx.translate(0, -25);
-
-    ctx.fillStyle = '#09090b';
-    ctx.beginPath();
-    ctx.arc(0, 0, 16, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.fillStyle = '#18181b';
-    ctx.fillRect(0, 0, 15, 12);
-
-    ctx.fillStyle = '#dc2626';
-    ctx.fillRect(-14, -8, 28, 4);
-
-    ctx.fillStyle = '#c084fc';
-    ctx.shadowColor = '#a855f7';
-    ctx.shadowBlur = 8;
-    ctx.fillRect(4, -3, 5, 2.5);
-    ctx.restore();
-
-    const isSwinging = this.swingAnim > 0;
-
-    ctx.save();
-    ctx.translate(10, -6);
-    ctx.rotate(isSwinging ? (1.5 - this.swingAnim * 3.0) : 0.6);
-
-    if (isSwinging) {
-      ctx.strokeStyle = 'rgba(192, 132, 252, 0.8)';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(0, 0, 32, -Math.PI * 0.3, Math.PI * 0.4);
-      ctx.stroke();
-    }
-
-    ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(0, -2, 22, 4);
-    ctx.fillStyle = '#7e22ce';
-    ctx.fillRect(0, 1, 20, 1.5);
-    ctx.fillStyle = '#09090b';
-    ctx.fillRect(-4, -4, 4, 8);
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(-8, -4);
-    ctx.rotate(isSwinging ? -0.8 : -0.3);
-    ctx.fillStyle = '#e2e8f0';
-    ctx.fillRect(-18, -2, 18, 4);
-    ctx.fillStyle = '#7e22ce';
-    ctx.fillRect(-16, 1, 16, 1.5);
     ctx.restore();
   }
 }
 
-// --- ENEMY CLASS WITH MIGHTY KNIGHT STYLIZED RENDERING ---
+// --- ENEMY CLASS ---
 class Enemy {
   constructor(game, config) {
     this.game = game;
@@ -2637,7 +2796,7 @@ class Enemy {
   }
 }
 
-// --- BOSS CLASS WITH MASSIVE MIGHTY KNIGHT BOSS SPRITES ---
+// --- BOSS CLASS ---
 class Boss extends Enemy {
   constructor(game, config) {
     super(game, config);
@@ -3018,7 +3177,7 @@ class Boss extends Enemy {
   }
 }
 
-// --- PROJECTILE CLASS ---
+// --- PROJECTILE CLASS: REALISTIC ARROWS, MAGIC ORBS, AND DAGGERS ---
 class Projectile {
   constructor(game, config) {
     this.game = game;
@@ -3031,7 +3190,7 @@ class Projectile {
     this.isFromPlayer = config.isFromPlayer;
     this.type = config.type || 'arrow';
     this.color = config.color || '#fff';
-    this.radius = 6;
+    this.radius = 8;
     this.destroyed = false;
     this.life = 2.5;
   }
@@ -3081,12 +3240,95 @@ class Projectile {
     }
   }
 
+  // --- DRAW ACTUAL ARROW / FIREBALL / WEAPON PROJECTILES (NO BALLS!) ---
   draw(ctx) {
     ctx.save();
-    ctx.fillStyle = this.color;
-    ctx.beginPath();
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.translate(this.x, this.y);
+    const angle = Math.atan2(this.vy, this.vx);
+    ctx.rotate(angle);
+
+    if (this.type === 'arrow') {
+      // 1. Motion Speed Trail
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-22, 0);
+      ctx.lineTo(-6, 0);
+      ctx.stroke();
+
+      // 2. Wooden Cedar Arrow Shaft
+      ctx.fillStyle = '#78350f';
+      ctx.fillRect(-14, -1.5, 22, 3);
+
+      // 3. Sharp Pointed Silver Arrowhead
+      ctx.fillStyle = '#f8fafc';
+      ctx.beginPath();
+      ctx.moveTo(8, -4.5);
+      ctx.lineTo(16, 0);
+      ctx.lineTo(8, 4.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // 4. Feathered Fletchings (Red and White)
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.moveTo(-14, 0);
+      ctx.lineTo(-10, -4);
+      ctx.lineTo(-5, -4);
+      ctx.lineTo(-9, 0);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(-14, 0);
+      ctx.lineTo(-10, 4);
+      ctx.lineTo(-5, 4);
+      ctx.lineTo(-9, 0);
+      ctx.closePath();
+      ctx.fill();
+    } else if (this.type === 'fireball') {
+      ctx.fillStyle = '#f97316';
+      ctx.shadowColor = '#ea580c';
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.moveTo(8, 0);
+      ctx.quadraticCurveTo(0, -7, -12, 0);
+      ctx.quadraticCurveTo(0, 7, 8, 0);
+      ctx.fill();
+
+      ctx.fillStyle = '#fef08a';
+      ctx.beginPath();
+      ctx.arc(2, 0, 4, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (this.type === 'gale') {
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = '#38bdf8';
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(-16, 0);
+      ctx.lineTo(18, 0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(4, 0, 8, -Math.PI / 2, Math.PI / 2);
+      ctx.stroke();
+    } else if (this.type === 'dagger') {
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(-10, -2, 20, 4);
+      ctx.fillStyle = '#7e22ce';
+      ctx.fillRect(-4, -4, 4, 8);
+    } else {
+      ctx.fillStyle = this.color;
+      ctx.shadowColor = this.color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(0, 0, 7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     ctx.restore();
   }
 }
